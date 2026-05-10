@@ -138,3 +138,31 @@
   - 24 vitest tests pass; `pnpm typecheck` + `pnpm lint` clean.
 - Next: Audio preview — spacebar to play/pause selected track, scrub on waveform. Requires `play_audio(path)` / `pause_audio` IPC commands using rodio on the Rust side.
 - Blockers: none.
+
+## Session 7 — 2026-05-10
+
+### Plan
+- Task: audio preview — spacebar to play/pause selected track.
+- Goals:
+  1. Add `rodio = { version = "0.19", features = ["symphonia-all"] }` to src-tauri/Cargo.toml.
+  2. `src/audio.rs`: AudioPlayer with dedicated OS thread (OutputStream stays on thread), mpsc channel for commands, Arc<Mutex<PlaybackState>> for state reads.
+  3. IPC commands: `play_track(path)`, `pause_audio`, `resume_audio`, `stop_audio` — all delegate to AudioPlayer via tauri::State.
+  4. `src/ipc.ts`: typed wrappers for the four audio commands.
+  5. `src/hooks/useAudioPlayer.ts`: manages isPlaying/currentPath state, fires IPC, registers spacebar keydown handler.
+  6. `TrackDetailPanel`: add `isPlaying` + `onTogglePlay` props; show play/pause button in header.
+  7. `App.tsx`: use hook, pass audio props to panel.
+  8. Tests; typecheck + lint green; commit + push.
+
+### End of session
+- Shipped:
+  - `apps/desktop/src-tauri/Cargo.toml`: added `rodio = { version = "0.19", features = ["symphonia-all"] }`.
+  - `apps/desktop/src-tauri/src/audio.rs`: `AudioCmd` enum, `PlaybackState` (Clone+Serialize), `AudioPlayer` — dedicated OS thread owns `OutputStream`+`Sink` (both `!Send`); commands via `mpsc::sync_channel(8)`; state reads via `Arc<Mutex<PlaybackState>>`. Handles `Play(PathBuf)`, `Pause`, `Resume`, `Stop`.
+  - `apps/desktop/src-tauri/src/lib.rs`: `mod audio;`, `play_track` / `pause_audio` / `resume_audio` / `stop_audio` / `get_playback_state` IPC commands; `.manage(audio::AudioPlayer::new())` in `run()`.
+  - `src/ipc.ts`: added `playTrack`, `pauseAudio`, `resumeAudio`, `stopAudio`, `getPlaybackState` + `PlaybackState` type.
+  - `src/hooks/useAudioPlayer.ts`: `useAudioPlayer(selectedTrack)` — tracks `isPlaying`/`currentPath` state, exposes `play`/`pause`/`resume`/`toggleCurrent`/`isCurrentTrack`, registers global `Space` keydown listener (skips `<input>` / `<textarea>` targets).
+  - `src/components/TrackDetailPanel.tsx`: added `isPlaying: boolean` + `onTogglePlay: () => void` props; indigo circular play/pause button (▶/⏸ SVG icons, `aria-label`) in the track header; disabled when `folder_path` is null.
+  - `src/App.tsx`: calls `useAudioPlayer(selectedTrack)`; passes `isPlaying` and `onTogglePlay` to `TrackDetailPanel`.
+  - 41 vitest tests pass (13 new: 12 `useAudioPlayer` + 5 `TrackDetailPanel` play-button tests); `pnpm typecheck` + `pnpm lint` clean.
+  - Note: waveform scrub deferred (requires Tauri asset protocol for `file://` in WebView); placeholder remains "Waveform — Phase 1".
+- Next: Settings page — theme toggle, library path reset, model API keys (stored via OS keychain or config file).
+- Blockers: none.

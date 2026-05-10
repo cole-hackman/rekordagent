@@ -3,6 +3,7 @@ import { FirstRunWizard } from "./components/FirstRunWizard";
 import { TrackTable } from "./components/TrackTable";
 import { TrackDetailPanel } from "./components/TrackDetailPanel";
 import { useAppStore } from "./store/appStore";
+import { useAudioPlayer } from "./hooks/useAudioPlayer";
 import { getLibraryPath, validateLibraryPath } from "./ipc";
 import type { Track } from "./types";
 
@@ -11,6 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
+  const audio = useAudioPlayer(selectedTrack);
 
   useEffect(() => {
     getLibraryPath()
@@ -68,7 +70,12 @@ export default function App() {
           onSelect={setSelectedTrack}
         />
         {selectedTrack && (
-          <TrackDetailPanel track={selectedTrack} libraryPath={libraryPath} />
+          <TrackDetailPanel
+            track={selectedTrack}
+            libraryPath={libraryPath}
+            isPlaying={audio.isPlaying && audio.isCurrentTrack(selectedTrack)}
+            onTogglePlay={audio.toggleCurrent}
+          />
         )}
       </div>
     </div>

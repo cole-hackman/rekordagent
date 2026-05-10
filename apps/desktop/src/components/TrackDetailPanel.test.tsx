@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Track, HotCue } from "../types";
@@ -49,13 +49,13 @@ beforeEach(() => {
 
 describe("TrackDetailPanel", () => {
   it("displays track title and artist", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.getByText("Surgeon")).toBeInTheDocument();
   });
 
   it("displays metadata fields", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("Force + Form")).toBeInTheDocument();
     expect(screen.getByText("Techno")).toBeInTheDocument();
     expect(screen.getByText("140.0")).toBeInTheDocument();
@@ -66,26 +66,26 @@ describe("TrackDetailPanel", () => {
   });
 
   it("displays comment", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("Opener banger")).toBeInTheDocument();
   });
 
   it("displays cue timestamps formatted as M:SS.s", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("0:08.0")).toBeInTheDocument();
     expect(screen.getByText("0:45.0")).toBeInTheDocument();
     expect(screen.getByText("2:00.5")).toBeInTheDocument();
   });
 
   it("shows slot labels for hot cues and memory cue", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("M")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
   it("shows cue comments", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("Intro")).toBeInTheDocument();
     expect(screen.getByText("Drop")).toBeInTheDocument();
   });
@@ -96,17 +96,40 @@ describe("TrackDetailPanel", () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useTrackCues>);
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("No cues.")).toBeInTheDocument();
   });
 
   it("shows rating stars", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByLabelText("3 stars")).toBeInTheDocument();
   });
 
   it("shows waveform placeholder", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" />, { wrapper });
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByText("Waveform — Phase 1")).toBeInTheDocument();
+  });
+
+  it("shows play button when not playing", () => {
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+  });
+
+  it("shows pause button when playing", () => {
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={true} onTogglePlay={vi.fn()} />, { wrapper });
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  });
+
+  it("calls onTogglePlay when play button is clicked", () => {
+    const onTogglePlay = vi.fn();
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={onTogglePlay} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(onTogglePlay).toHaveBeenCalledOnce();
+  });
+
+  it("disables play button when track has no folder_path", () => {
+    const noPathTrack = { ...BASE_TRACK, folder_path: null };
+    render(<TrackDetailPanel track={noPathTrack} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
   });
 });

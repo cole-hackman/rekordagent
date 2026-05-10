@@ -70,9 +70,11 @@ function CueRow({ cue }: { cue: HotCue }) {
 interface Props {
   track: Track;
   libraryPath: string;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
 }
 
-export function TrackDetailPanel({ track, libraryPath }: Props) {
+export function TrackDetailPanel({ track, libraryPath, isPlaying, onTogglePlay }: Props) {
   const { data: cues = [], isLoading: cuesLoading } = useTrackCues(
     libraryPath,
     track.id,
@@ -86,15 +88,36 @@ export function TrackDetailPanel({ track, libraryPath }: Props) {
     <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-950">
       {/* Header */}
       <div className="border-b border-zinc-800 p-4">
-        <h2
-          className="truncate text-base font-semibold leading-tight text-zinc-100"
-          title={track.title}
-        >
-          {track.title}
-        </h2>
-        {track.artist && (
-          <p className="mt-0.5 truncate text-sm text-zinc-400">{track.artist}</p>
-        )}
+        <div className="flex items-start gap-3">
+          <button
+            onClick={onTogglePlay}
+            disabled={!track.folder_path}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isPlaying ? (
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
+                <rect x="3" y="2" width="4" height="12" rx="1" />
+                <rect x="9" y="2" width="4" height="12" rx="1" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
+                <path d="M4 2.5l9 5.5-9 5.5V2.5z" />
+              </svg>
+            )}
+          </button>
+          <div className="min-w-0">
+            <h2
+              className="truncate text-base font-semibold leading-tight text-zinc-100"
+              title={track.title}
+            >
+              {track.title}
+            </h2>
+            {track.artist && (
+              <p className="mt-0.5 truncate text-sm text-zinc-400">{track.artist}</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Waveform placeholder */}

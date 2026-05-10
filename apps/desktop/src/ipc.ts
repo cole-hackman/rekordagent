@@ -36,3 +36,28 @@ export async function setLibraryPath(path: string): Promise<void> {
   return invoke<void>("set_library_path", { path });
 }
 
+export async function playTrack(path: string): Promise<void> {
+  return invoke<void>("play_track", { path });
+}
+
+export async function pauseAudio(): Promise<void> {
+  return invoke<void>("pause_audio");
+}
+
+export async function resumeAudio(): Promise<void> {
+  return invoke<void>("resume_audio");
+}
+
+export async function stopAudio(): Promise<void> {
+  return invoke<void>("stop_audio");
+}
+
+export interface PlaybackState {
+  is_playing: boolean;
+  path: string | null;
+}
+
+export async function getPlaybackState(): Promise<PlaybackState> {
+  return invoke<PlaybackState>("get_playback_state");
+}
+

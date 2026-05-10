@@ -4,7 +4,7 @@
 Phase 1 — foundations & read-only library (target: v0.1.0)
 
 ## Current task
-Audio preview: spacebar to play/pause selected track, scrub on waveform.
+Settings: theme, library path, model API keys.
 
 ## Recently completed
 - [x] Bootstrap: repo scaffold per §3 (session 1)
@@ -14,6 +14,7 @@ Audio preview: spacebar to play/pause selected track, scrub on waveform.
 - [x] `apps/desktop`: Tauri 2 + React + Vite + Tailwind scaffold; first-run wizard (file picker → validate → persist); 7 vitest tests; pnpm typecheck + lint green (session 4)
 - [x] Library browser UI: virtualized track table (TanStack Table + Virtual); title/artist/BPM/key/time/genre columns; header sort; filter input; 15 vitest tests (session 5)
 - [x] Track detail panel: metadata grid, hot cues list (slot/timestamp/comment), waveform placeholder, row selection in table; 24 vitest tests (session 6)
+- [x] Audio preview: rodio AudioPlayer (dedicated OS thread), spacebar play/pause, play button in track panel; 41 vitest tests (session 7)
 
 ## Phase 1 checklist
 - [x] Repo scaffold per §3
@@ -24,7 +25,7 @@ Audio preview: spacebar to play/pause selected track, scrub on waveform.
 - [x] `apps/desktop`: Tauri 2 scaffold, React + Vite + Tailwind. First-run wizard locates `master.db` and validates.
 - [x] Library browser UI: virtualized track table, filterable, sortable
 - [x] Track detail panel: tags, cues, waveform
-- [ ] Audio preview: spacebar to play/pause, scrub on waveform
+- [x] Audio preview: spacebar to play/pause, scrub on waveform
 - [ ] Settings: theme, library path, model API keys
 - [ ] **Demo:** open the app, see your library, click a track, hear it
 

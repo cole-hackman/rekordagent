@@ -1,5 +1,9 @@
+mod audio;
+
 use std::path::Path;
 use tauri::Manager;
+
+// ── Library commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
 async fn validate_library_path(path: String) -> Result<u64, String> {
@@ -18,9 +22,7 @@ async fn validate_library_path(path: String) -> Result<u64, String> {
 }
 
 #[tauri::command]
-async fn list_tracks(
-    path: String,
-) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+async fn list_tracks(path: String) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
             .map_err(|e| e.to_string())?;
@@ -44,7 +46,8 @@ async fn get_track_cues(
     .map_err(|e| e.to_string())?
 }
 
-(app: tauri::AppHandle) -> Result<Option<String>, String> {
+#[tauri::command]
+async fn get_library_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let config_dir = app
         .path()
         .app_config_dir()
@@ -76,15 +79,64 @@ async fn set_library_path(app: tauri::AppHandle, path: String) -> Result<(), Str
     Ok(())
 }
 
+// ── Audio commands ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn play_track(
+    path: String,
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<(), String> {
+    if path.is_empty() {
+        return Err("empty path".into());
+    }
+    player.send(audio::AudioCmd::Play(std::path::PathBuf::from(path)))
+}
+
+#[tauri::command]
+async fn pause_audio(
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<(), String> {
+    player.send(audio::AudioCmd::Pause)
+}
+
+#[tauri::command]
+async fn resume_audio(
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<(), String> {
+    player.send(audio::AudioCmd::Resume)
+}
+
+#[tauri::command]
+async fn stop_audio(
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<(), String> {
+    player.send(audio::AudioCmd::Stop)
+}
+
+#[tauri::command]
+async fn get_playback_state(
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<audio::PlaybackState, String> {
+    Ok(player.playback_state())
+}
+
+// ── App entry point ───────────────────────────────────────────────────────────
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(audio::AudioPlayer::new())
         .invoke_handler(tauri::generate_handler![
             validate_library_path,
             list_tracks,
             get_track_cues,
             get_library_path,
             set_library_path,
+            play_track,
+            pause_audio,
+            resume_audio,
+            stop_audio,
+            get_playback_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running decks");
