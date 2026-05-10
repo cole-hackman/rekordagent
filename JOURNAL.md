@@ -41,3 +41,14 @@
   - Bug fixed mid-session: ANLZ parser `parse_pqtz_section` had wrong byte offset for `content_start` (was jumping 12 extra bytes into beat entries). Fixed by passing `section_start` directly and computing offsets from it.
 - Next: implement `crates/rekordbox-xml` — parse and emit Rekordbox XML; round-trip property tests.
 - Blockers: none.
+
+## Session 3 — 2026-05-10
+
+### Plan
+- Task: implement `crates/rekordbox-xml` — parse and emit Rekordbox XML.
+- Goals:
+  1. Model `Collection`, `Track`, `Playlist`, `Position_Mark` (hot cue) types.
+  2. Parse from XML using `quick-xml`; emit back to XML.
+  3. Round-trip property test: parse → emit → parse, all fields equal.
+  4. Unit tests: happy path track/playlist/cue parse + emit; malformed XML errors.
+  5. Commit mid-session after first green test run; commit again at end.

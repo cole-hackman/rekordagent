@@ -3,11 +3,12 @@ name = "rekordbox-xml"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Rekordbox XML import format — read and write"
+description = "Rekordbox XML import format — parse and emit"
 
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 tracing = { workspace = true }
+roxmltree = "0.20"
+quick-xml = "0.37"
