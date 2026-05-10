@@ -61,3 +61,25 @@ export async function getPlaybackState(): Promise<PlaybackState> {
   return invoke<PlaybackState>("get_playback_state");
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export async function getTheme(): Promise<string | null> {
+  return invoke<string | null>("get_theme");
+}
+
+export async function setTheme(theme: string): Promise<void> {
+  return invoke<void>("set_theme", { theme });
+}
+
+export async function getApiKey(service: string): Promise<string | null> {
+  return invoke<string | null>("get_api_key", { service });
+}
+
+export async function setApiKey(service: string, key: string): Promise<void> {
+  return invoke<void>("set_api_key", { service, key });
+}
+
+export async function deleteApiKey(service: string): Promise<void> {
+  return invoke<void>("delete_api_key", { service });
+}
+

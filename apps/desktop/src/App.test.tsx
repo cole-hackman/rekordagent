@@ -5,12 +5,15 @@ import App from "./App";
 vi.mock("./ipc", () => ({
   getLibraryPath: vi.fn().mockResolvedValue(null),
   validateLibraryPath: vi.fn(),
+  getTheme: vi.fn().mockResolvedValue(null),
 }));
 
 const mockState = {
   libraryPath: null as string | null,
   trackCount: null as number | null,
+  theme: "dark" as "dark" | "light",
   setLibraryConfigured: vi.fn(),
+  setTheme: vi.fn(),
 };
 
 vi.mock("./store/appStore", () => ({

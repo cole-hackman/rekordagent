@@ -166,3 +166,28 @@
   - Note: waveform scrub deferred (requires Tauri asset protocol for `file://` in WebView); placeholder remains "Waveform — Phase 1".
 - Next: Settings page — theme toggle, library path reset, model API keys (stored via OS keychain or config file).
 - Blockers: none.
+
+## Session 8 — 2026-05-10
+
+### Plan
+- Task: settings page — theme, library path reset, model API keys.
+- Goals:
+  1. Add `keyring = "2"` to `src-tauri/Cargo.toml`; add private `read_config`/`write_config` helpers to `lib.rs`; refactor `set_library_path` to merge instead of overwrite; add `get_theme`, `set_theme`, `get_api_key`, `set_api_key`, `delete_api_key` IPC commands.
+  2. `src/ipc.ts`: typed wrappers for the five new commands.
+  3. `src/store/appStore.ts`: add `theme: "dark" | "light"` + `setTheme`.
+  4. `src/components/SettingsPanel.tsx`: slide-over panel — Appearance (dark/light toggle), Library (current path + Change button), API Keys (Anthropic key, masked input, show/hide, save to keychain, remove).
+  5. `src/App.tsx`: gear icon in header; `showSettings` state; load theme + apply `dark` class to `<html>`; render `<SettingsPanel>`.
+  6. Tests; typecheck + lint green; commit + push.
+
+### End of session
+- Shipped:
+  - `apps/desktop/src-tauri/Cargo.toml`: added `keyring = "2"` for OS keychain access (macOS Keychain, Windows Credential Store, Linux SecretService).
+  - `apps/desktop/src-tauri/src/lib.rs`: added private `read_config`/`write_config` helpers (merge-based, replacing the old overwrite in `set_library_path`); added `get_theme`, `set_theme`, `get_api_key`, `set_api_key`, `delete_api_key` IPC commands; all five registered in `invoke_handler!`.
+  - `src/ipc.ts`: typed wrappers for `getTheme`, `setTheme`, `getApiKey`, `setApiKey`, `deleteApiKey`.
+  - `src/store/appStore.ts`: added `theme: "dark" | "light"` (default `"dark"`) and `setTheme` action.
+  - `src/components/SettingsPanel.tsx`: slide-over panel (fixed right) with three sections — Appearance (dark/light toggle, persists to config.json), Library (shows current path, Change Library… triggers file picker + validate + save), API Keys (Anthropic key, masked input with show/hide toggle, Save to OS keychain, Remove button).
+  - `src/App.tsx`: gear icon button in header; `showSettings` state; on mount loads both library path and theme in parallel; applies/removes `dark` class on `document.documentElement` when `theme` changes; renders `<SettingsPanel>` when open.
+  - 55 vitest tests pass (14 new `SettingsPanel` tests); `pnpm typecheck` + `pnpm lint` clean.
+  - Note: `config.json` now merges fields (library_path + theme) instead of overwriting, so settings survive across sessions without clobbering each other.
+- Next: Phase 1 demo — build the app on macOS/Windows, open with a real Rekordbox library, click a track, hear it; tag v0.1.0.
+- Blockers: none.

@@ -4,7 +4,7 @@
 Phase 1 — foundations & read-only library (target: v0.1.0)
 
 ## Current task
-Settings: theme, library path, model API keys.
+Demo: open the app, see your library, click a track, hear it → tag v0.1.0.
 
 ## Recently completed
 - [x] Bootstrap: repo scaffold per §3 (session 1)
@@ -15,6 +15,7 @@ Settings: theme, library path, model API keys.
 - [x] Library browser UI: virtualized track table (TanStack Table + Virtual); title/artist/BPM/key/time/genre columns; header sort; filter input; 15 vitest tests (session 5)
 - [x] Track detail panel: metadata grid, hot cues list (slot/timestamp/comment), waveform placeholder, row selection in table; 24 vitest tests (session 6)
 - [x] Audio preview: rodio AudioPlayer (dedicated OS thread), spacebar play/pause, play button in track panel; 41 vitest tests (session 7)
+- [x] Settings page: dark/light theme toggle (persisted + applied to `<html>`), library path reset, Anthropic API key via OS keychain; 55 vitest tests (session 8)
 
 ## Phase 1 checklist
 - [x] Repo scaffold per §3
@@ -26,7 +27,7 @@ Settings: theme, library path, model API keys.
 - [x] Library browser UI: virtualized track table, filterable, sortable
 - [x] Track detail panel: tags, cues, waveform
 - [x] Audio preview: spacebar to play/pause, scrub on waveform
-- [ ] Settings: theme, library path, model API keys
+- [x] Settings: theme, library path, model API keys
 - [ ] **Demo:** open the app, see your library, click a track, hear it
 
 ## Blockers

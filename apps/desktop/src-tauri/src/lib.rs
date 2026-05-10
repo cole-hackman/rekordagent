@@ -3,6 +3,32 @@ mod audio;
 use std::path::Path;
 use tauri::Manager;
 
+// ── Config helpers ────────────────────────────────────────────────────────────
+
+fn read_config(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("config.json");
+    if !path.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+fn write_config(app: &tauri::AppHandle, config: &serde_json::Value) -> Result<(), String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    let path = config_dir.join("config.json");
+    std::fs::write(&path, serde_json::to_string_pretty(config).unwrap())
+        .map_err(|e| e.to_string())
+}
+
 // ── Library commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -48,35 +74,68 @@ async fn get_track_cues(
 
 #[tauri::command]
 async fn get_library_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
-    let config_file = config_dir.join("config.json");
-    if !config_file.exists() {
-        return Ok(None);
-    }
-    let content = std::fs::read_to_string(&config_file).map_err(|e| e.to_string())?;
-    let config: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let config = read_config(&app)?;
     Ok(config["library_path"].as_str().map(|s| s.to_owned()))
 }
 
 #[tauri::command]
 async fn set_library_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
-    let config_file = config_dir.join("config.json");
-    let config = serde_json::json!({ "library_path": path });
-    std::fs::write(
-        &config_file,
-        serde_json::to_string_pretty(&config).unwrap(),
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    let mut config = read_config(&app)?;
+    config["library_path"] = serde_json::json!(path);
+    write_config(&app, &config)
+}
+
+// ── Settings commands ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_theme(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let config = read_config(&app)?;
+    Ok(config["theme"].as_str().map(|s| s.to_owned()))
+}
+
+#[tauri::command]
+async fn set_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
+    let mut config = read_config(&app)?;
+    config["theme"] = serde_json::json!(theme);
+    write_config(&app, &config)
+}
+
+#[tauri::command]
+async fn get_api_key(service: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let entry = keyring::Entry::new("decks", &service).map_err(|e| e.to_string())?;
+        match entry.get_password() {
+            Ok(pw) => Ok(Some(pw)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_api_key(service: String, key: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let entry = keyring::Entry::new("decks", &service).map_err(|e| e.to_string())?;
+        entry.set_password(&key).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_api_key(service: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let entry = keyring::Entry::new("decks", &service).map_err(|e| e.to_string())?;
+        match entry.delete_password() {
+            Ok(()) => Ok(()),
+            Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ── Audio commands ────────────────────────────────────────────────────────────
@@ -132,6 +191,11 @@ pub fn run() {
             get_track_cues,
             get_library_path,
             set_library_path,
+            get_theme,
+            set_theme,
+            get_api_key,
+            set_api_key,
+            delete_api_key,
             play_track,
             pause_audio,
             resume_audio,
