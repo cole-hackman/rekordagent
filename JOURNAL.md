@@ -62,3 +62,28 @@
   - STATUS.md updated: rekordbox-xml and cache checked off; next task = apps/desktop Tauri 2 scaffold.
 - Next: scaffold `apps/desktop` — Tauri 2 + React + Vite + Tailwind; first-run wizard to locate `master.db` and validate it.
 - Blockers: none.
+
+## Session 4 — 2026-05-10
+
+### Plan
+- Task: implement first-run wizard in `apps/desktop`.
+- Goals:
+  1. Add `tauri-plugin-dialog` (native file picker) and `tauri-plugin-store` (persisting library path) to both Cargo and package.json.
+  2. Implement Tauri IPC commands: `validate_library_path(path)` (open with RekordboxDb, run test query), `get_library_path()`, `set_library_path(path)`.
+  3. React `FirstRunWizard`: multi-step — welcome → pick file → validate → done.
+  4. `App.tsx` shows wizard when no library path is stored; shows main layout when configured.
+  5. Vitest tests for wizard component; pnpm typecheck + lint green; commit + push.
+
+### End of session
+- Shipped:
+  - `apps/desktop/src-tauri/src/lib.rs`: three IPC commands — `validate_library_path` (opens RekordboxDb, queries track count), `get_library_path` (reads `~/.config/decks/config.json`), `set_library_path` (writes config).
+  - `tauri-plugin-dialog` added to Cargo + npm; `src-tauri/capabilities/default.json` grants `core:default` + `dialog:allow-open`.
+  - `src/ipc.ts`: typed wrappers for all IPC calls + `pickLibraryPath` using `@tauri-apps/plugin-dialog`.
+  - `src/store/appStore.ts`: Zustand store with `libraryPath`, `trackCount`, `setLibraryConfigured`.
+  - `src/components/FirstRunWizard.tsx`: 5-step wizard (welcome → pick → validating → done / error). Native file dialog, spinner, error retry.
+  - `src/App.tsx`: on mount reads saved path, validates; shows spinner → wizard (unconfigured) or main layout (configured).
+  - 7 vitest tests all pass; `pnpm typecheck` and `pnpm lint` both clean.
+  - Fixed ESLint version conflict (upgraded from 8→9 to match typescript-eslint@8 requirements).
+  - Note: Rust `cargo check` for `decks-desktop` requires `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` on Linux — unavailable in this build environment due to package mirror 404s. Build verified on macOS/Windows as primary targets per spec (§1: "macOS first, Windows second, Linux best-effort").
+- Next: Library browser UI — virtualized track table (TanStack Table + TanStack Virtual), filterable, sortable. Requires `list_tracks` IPC command.
+- Blockers: none.

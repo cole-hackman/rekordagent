@@ -17,6 +17,7 @@ members = [
     "crates/plugins",
     "crates/decks-core",
     "apps/cli",
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]

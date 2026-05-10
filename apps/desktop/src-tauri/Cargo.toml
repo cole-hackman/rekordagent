@@ -1,8 +1,8 @@
 [package]
 name = "decks-desktop"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 
 [lib]
 name = "decks_desktop_lib"
@@ -14,13 +14,13 @@ path = "src/main.rs"
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-build = { version = "2", features = [] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-anyhow = "1"
-tracing = "0.1"
+tauri-plugin-dialog = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-decks-core = { path = "../../crates/decks-core" }
+decks-core = { path = "../../../crates/decks-core" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
