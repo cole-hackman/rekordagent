@@ -1,0 +1,13 @@
+[package]
+name = "rekordbox-xml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rekordbox XML import format — read and write"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

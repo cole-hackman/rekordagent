@@ -1,0 +1,33 @@
+# Rust
+/target/
+Cargo.lock
+
+# Node / pnpm
+node_modules/
+dist/
+.pnpm-store/
+
+# Tauri
+apps/desktop/src-tauri/target/
+
+# macOS
+.DS_Store
+*.dmg
+
+# Windows
+*.msi
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Env / secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Build artifacts
+*.log

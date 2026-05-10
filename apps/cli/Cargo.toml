@@ -1,0 +1,17 @@
+[package]
+name = "decks-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "decks CLI — same subcommands as the desktop app, calling the same crates"
+
+[[bin]]
+name = "decks"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+decks-core = { path = "../../crates/decks-core" }

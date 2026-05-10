@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+edition = "2021"
+
+members = [
+    "crates/rekordbox-db",
+    "crates/rekordbox-xml",
+    "crates/audio-analysis",
+    "crates/audio-tags",
+    "crates/enrichment",
+    "crates/classify",
+    "crates/scoring",
+    "crates/changes",
+    "crates/cache",
+    "crates/embeddings",
+    "crates/prodjlink",
+    "crates/ranker",
+    "crates/plugins",
+    "crates/decks-core",
+    "apps/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["decks contributors"]
+repository = "https://github.com/cole-hackman/rekordagent"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# Error handling
+anyhow = "1"
+thiserror = "1"
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,0 +1,13 @@
+[package]
+name = "prodjlink"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pioneer PRO DJ LINK UDP listener — live deck state events"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

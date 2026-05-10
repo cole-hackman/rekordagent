@@ -1,0 +1,16 @@
+[package]
+name = "rekordbox-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Read-only SQLCipher access to the Rekordbox 7 master.db"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+rusqlite = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "embeddings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLAP audio+text embeddings via ONNX Runtime and sqlite-vec vector search"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }

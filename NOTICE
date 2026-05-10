@@ -1,0 +1,20 @@
+# Third-Party Notices
+
+## reklawdbox
+
+This software incorporates code from reklawdbox
+(https://github.com/ryan-voitiskis/reklawdbox), copyright (c) 2024
+Ryan Voitiskis, licensed under the MIT License.
+
+Vendored or derived modules:
+- crates/rekordbox-db    — from src/db.rs
+- crates/rekordbox-xml  — from src/xml.rs
+- crates/audio-analysis — from src/audio.rs, src/audio_profile.rs, stratum-dsp/
+- crates/audio-tags     — from src/tags.rs
+- crates/enrichment     — from src/discogs.rs, src/beatport.rs, src/bandcamp.rs, src/musicbrainz.rs, broker/
+- crates/classify       — from src/classify.rs, src/genre.rs
+- crates/changes        — from src/changes.rs
+- crates/cache          — from src/store.rs
+- crates/scoring        — from src/tools/scoring.rs, src/tools/sequencing_handlers.rs
+- docs/rekordbox-internals.md — from docs/rekordbox-internals.md, docs/rekordbox-gotchas.md
+- docs/sops/            — from site/src/partials/sops/*.mdx

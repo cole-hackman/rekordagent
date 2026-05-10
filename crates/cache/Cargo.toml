@@ -1,0 +1,13 @@
+[package]
+name = "cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local SQLite WAL cache with schema versioning and sqlite-vec extension"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+rusqlite = { workspace = true }
+tracing = { workspace = true }
