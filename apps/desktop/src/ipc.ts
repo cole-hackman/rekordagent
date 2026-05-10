@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Track } from "./types";
+import type { Track, HotCue } from "./types";
 
 export async function pickLibraryPath(): Promise<string | null> {
   const result = await open({
@@ -19,6 +19,13 @@ export async function validateLibraryPath(path: string): Promise<number> {
 
 export async function listTracks(path: string): Promise<Track[]> {
   return invoke<Track[]>("list_tracks", { path });
+}
+
+export async function getTrackCues(
+  path: string,
+  trackId: number,
+): Promise<HotCue[]> {
+  return invoke<HotCue[]>("get_track_cues", { path, trackId });
 }
 
 export async function getLibraryPath(): Promise<string | null> {

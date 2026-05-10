@@ -71,9 +71,11 @@ const COLUMNS: ColumnDef<Track>[] = [
 interface Props {
   libraryPath: string;
   filter: string;
+  selectedTrackId: number | null;
+  onSelect: (track: Track) => void;
 }
 
-export function TrackTable({ libraryPath, filter }: Props) {
+export function TrackTable({ libraryPath, filter, selectedTrackId, onSelect }: Props) {
   const { data: tracks = [], isLoading, error } = useLibrary(libraryPath);
   const [sorting, setSorting] = useState<SortingState>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -171,7 +173,13 @@ export function TrackTable({ libraryPath, filter }: Props) {
                   display: "flex",
                   alignItems: "center",
                 }}
-                className="border-b border-zinc-800/50 text-sm hover:bg-zinc-800/60"
+                className={[
+                  "cursor-pointer border-b border-zinc-800/50 text-sm",
+                  row.original.id === selectedTrackId
+                    ? "bg-indigo-900/40 hover:bg-indigo-900/50"
+                    : "hover:bg-zinc-800/60",
+                ].join(" ")}
+                onClick={() => onSelect(row.original)}
               >
                 {row.getVisibleCells().map((cell) => {
                   const meta = cell.column.columnDef.meta as { align?: string } | undefined;

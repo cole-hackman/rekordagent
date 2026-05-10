@@ -4,7 +4,7 @@
 Phase 1 — foundations & read-only library (target: v0.1.0)
 
 ## Current task
-Track detail panel: tags (title/artist/BPM/key/comment), hot cues list.
+Audio preview: spacebar to play/pause selected track, scrub on waveform.
 
 ## Recently completed
 - [x] Bootstrap: repo scaffold per §3 (session 1)
@@ -13,6 +13,7 @@ Track detail panel: tags (title/artist/BPM/key/comment), hot cues list.
 - [x] `crates/cache`: SQLite WAL store, schema versioning, sqlite-vec extension hook, audio-features upsert/query (session 3)
 - [x] `apps/desktop`: Tauri 2 + React + Vite + Tailwind scaffold; first-run wizard (file picker → validate → persist); 7 vitest tests; pnpm typecheck + lint green (session 4)
 - [x] Library browser UI: virtualized track table (TanStack Table + Virtual); title/artist/BPM/key/time/genre columns; header sort; filter input; 15 vitest tests (session 5)
+- [x] Track detail panel: metadata grid, hot cues list (slot/timestamp/comment), waveform placeholder, row selection in table; 24 vitest tests (session 6)
 
 ## Phase 1 checklist
 - [x] Repo scaffold per §3
@@ -22,7 +23,7 @@ Track detail panel: tags (title/artist/BPM/key/comment), hot cues list.
 - [x] `crates/cache`: SQLite WAL store; schema versioning; load sqlite-vec extension
 - [x] `apps/desktop`: Tauri 2 scaffold, React + Vite + Tailwind. First-run wizard locates `master.db` and validates.
 - [x] Library browser UI: virtualized track table, filterable, sortable
-- [ ] Track detail panel: tags, cues, waveform
+- [x] Track detail panel: tags, cues, waveform
 - [ ] Audio preview: spacebar to play/pause, scrub on waveform
 - [ ] Settings: theme, library path, model API keys
 - [ ] **Demo:** open the app, see your library, click a track, hear it

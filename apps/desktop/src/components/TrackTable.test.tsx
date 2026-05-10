@@ -87,51 +87,51 @@ beforeEach(() => {
 
 describe("TrackTable", () => {
   it("renders track titles", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.getByText("Acid Rain")).toBeInTheDocument();
   });
 
   it("renders artist names", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Surgeon")).toBeInTheDocument();
     expect(screen.getByText("Aphex Twin")).toBeInTheDocument();
   });
 
   it("renders BPM formatted to one decimal", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("140.0")).toBeInTheDocument();
     expect(screen.getByText("130.5")).toBeInTheDocument();
   });
 
   it("renders duration as M:SS", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("6:00")).toBeInTheDocument();
     expect(screen.getByText("4:00")).toBeInTheDocument();
   });
 
   it("filters tracks by title", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="dark" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="dark" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.queryByText("Acid Rain")).not.toBeInTheDocument();
   });
 
   it("filters tracks by artist", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="aphex" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="aphex" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.queryByText("Dark Matter")).not.toBeInTheDocument();
     expect(screen.getByText("Acid Rain")).toBeInTheDocument();
   });
 
   it("shows 'No tracks found' when filter matches nothing", () => {
     render(
-      <TrackTable libraryPath="/tmp/master.db" filter="zzznomatch" />,
+      <TrackTable libraryPath="/tmp/master.db" filter="zzznomatch" selectedTrackId={null} onSelect={vi.fn()} />,
       { wrapper },
     );
     expect(screen.getByText("No tracks found.")).toBeInTheDocument();
   });
 
   it("shows column headers", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Title")).toBeInTheDocument();
     expect(screen.getByText("Artist")).toBeInTheDocument();
     expect(screen.getByText("BPM")).toBeInTheDocument();

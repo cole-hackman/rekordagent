@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { FirstRunWizard } from "./components/FirstRunWizard";
 import { TrackTable } from "./components/TrackTable";
+import { TrackDetailPanel } from "./components/TrackDetailPanel";
 import { useAppStore } from "./store/appStore";
 import { getLibraryPath, validateLibraryPath } from "./ipc";
+import type { Track } from "./types";
 
 export default function App() {
   const { libraryPath, trackCount, setLibraryConfigured } = useAppStore();
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
 
   useEffect(() => {
     getLibraryPath()
@@ -56,7 +59,18 @@ export default function App() {
           />
         </div>
       </header>
-      <TrackTable libraryPath={libraryPath} filter={filter} />
+
+      <div className="flex flex-1 overflow-hidden">
+        <TrackTable
+          libraryPath={libraryPath}
+          filter={filter}
+          selectedTrackId={selectedTrack?.id ?? null}
+          onSelect={setSelectedTrack}
+        />
+        {selectedTrack && (
+          <TrackDetailPanel track={selectedTrack} libraryPath={libraryPath} />
+        )}
+      </div>
     </div>
   );
 }

@@ -31,7 +31,20 @@ async fn list_tracks(
 }
 
 #[tauri::command]
-async fn get_library_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn get_track_cues(
+    path: String,
+    track_id: i64,
+) -> Result<Vec<decks_core::rekordbox_db::HotCue>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.hot_cues_for_track(track_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let config_dir = app
         .path()
         .app_config_dir()
@@ -69,6 +82,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             validate_library_path,
             list_tracks,
+            get_track_cues,
             get_library_path,
             set_library_path,
         ])

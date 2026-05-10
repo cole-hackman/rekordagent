@@ -113,3 +113,28 @@
   - Virtualizer mock pattern documented: `useVirtualizer` returns all items in jsdom so row content is testable.
 - Next: Track detail panel — show tags, hot cues list when a row is clicked. Requires `get_track_cues(id)` IPC command.
 - Blockers: none.
+
+## Session 6 — 2026-05-10
+
+### Plan
+- Task: track detail panel — show metadata and hot cues when a row is clicked.
+- Goals:
+  1. `get_track_cues(path, track_id)` Tauri IPC command via spawn_blocking.
+  2. `HotCue` / `CueKind` TypeScript types; `getTrackCues` IPC wrapper; `useTrackCues` hook.
+  3. `TrackDetailPanel`: title/artist/metadata grid, hot cues list (slot, timestamp, comment), waveform placeholder.
+  4. `TrackTable`: add `onSelect` prop + row click handler + selected row highlight.
+  5. `App.tsx`: `selectedTrack` state; split layout (table | panel).
+  6. Vitest tests; typecheck + lint green; commit + push.
+
+### End of session
+- Shipped:
+  - `src-tauri/src/lib.rs`: `get_track_cues(path, track_id)` IPC command via spawn_blocking.
+  - `src/types.ts`: `CueKind` ("MemoryCue" | { HotCue: n }) and `HotCue` interface.
+  - `src/ipc.ts`: `getTrackCues` wrapper.
+  - `src/hooks/useTrackCues.ts`: TanStack Query hook (staleTime=Infinity, enabled when both args non-null).
+  - `src/components/TrackDetailPanel.tsx`: 320px right panel — title/artist header, waveform placeholder, metadata grid (album/genre/BPM/key/duration/rating★/year/plays/comment), cue list sorted by in_msec (slot badge with per-slot color, M:SS.s timestamp, cue comment).
+  - `src/components/TrackTable.tsx`: added `selectedTrackId` + `onSelect` props; selected row highlighted indigo; row click fires onSelect.
+  - `src/App.tsx`: `selectedTrack` state; split body layout (table | detail panel when track selected).
+  - 24 vitest tests pass; `pnpm typecheck` + `pnpm lint` clean.
+- Next: Audio preview — spacebar to play/pause selected track, scrub on waveform. Requires `play_audio(path)` / `pause_audio` IPC commands using rodio on the Rust side.
+- Blockers: none.
