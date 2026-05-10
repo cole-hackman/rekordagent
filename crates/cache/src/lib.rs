@@ -1,9 +1,9 @@
-//! Local SQLite WAL cache with schema versioning and sqlite-vec extension.
+//! Local SQLite WAL cache — schema-versioned, with sqlite-vec extension support.
 //!
-//! Vendored and adapted from reklawdbox `src/store.rs` (MIT, Ryan Voitiskis).
+//! All derived data (audio features, embeddings, staged changes, conversation
+//! history) lives here, never in the Rekordbox `master.db`.
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn placeholder() {}
-}
+mod migrations;
+pub mod store;
+
+pub use store::CacheDb;

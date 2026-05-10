@@ -52,3 +52,13 @@
   3. Round-trip property test: parse → emit → parse, all fields equal.
   4. Unit tests: happy path track/playlist/cue parse + emit; malformed XML errors.
   5. Commit mid-session after first green test run; commit again at end.
+
+### End of session
+- Shipped:
+  - `crates/rekordbox-xml`: full parse/emit for Rekordbox XML — `Collection`, `Track`, `Tempo`, `PositionMark`, `Node` (folder/playlist) types; `roxmltree` DOM parser; `quick-xml` writer with 2-space indentation; `file://localhost` URI helpers (`path_to_location` / `location_to_path`).
+  - Round-trip tests: full collection, special chars in name (ampersand, angle brackets), empty collection, BPM precision at 128.0 / 174.5 / 100.123.
+  - Bug fixed: `quick-xml` `push_attribute` escapes internally — removed manual `xml_escape()` call that caused double-escaping (`&amp;` → `&amp;amp;`).
+  - `crates/cache`: SQLite WAL cache with schema migrations (`PRAGMA user_version`), `CacheDb` with `open` / `open_in_memory` / `load_vec_extension` (unsafe, Phase 4) / `upsert_audio_features` / `get_audio_features`. 10 tests all pass.
+  - STATUS.md updated: rekordbox-xml and cache checked off; next task = apps/desktop Tauri 2 scaffold.
+- Next: scaffold `apps/desktop` — Tauri 2 + React + Vite + Tailwind; first-run wizard to locate `master.db` and validate it.
+- Blockers: none.
