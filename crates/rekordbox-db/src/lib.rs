@@ -1,11 +1,24 @@
 //! Read-only SQLCipher access to the Rekordbox 7 `master.db`.
 //!
 //! Vendored and adapted from reklawdbox `src/db.rs` (MIT, Ryan Voitiskis).
+//!
+//! # Quick start
+//!
+//! ```no_run
+//! use rekordbox_db::RekordboxDb;
+//! use std::path::Path;
+//!
+//! let db = RekordboxDb::open(Path::new("/path/to/master.db")).unwrap();
+//! let tracks = db.tracks().unwrap();
+//! println!("{} tracks", tracks.len());
+//! ```
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn placeholder() {
-        // Replaced by real tests when the crate is implemented.
-    }
-}
+pub mod anlz;
+mod connection;
+mod queries;
+pub mod types;
+
+pub use connection::RekordboxDb;
+pub use types::{
+    BeatGridEntry, CueKind, HotCue, Playlist, PlaylistEntry, PlaylistKind, Track,
+};

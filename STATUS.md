@@ -4,15 +4,16 @@
 Phase 1 — foundations & read-only library (target: v0.1.0)
 
 ## Current task
-Scaffold `crates/rekordbox-db` — SQLCipher key derivation; open `master.db` read-only; query tracks, playlists, hot cues, beat grid; integration test against `fixtures/tiny-library/`.
+Implement `crates/rekordbox-xml` — parse and emit Rekordbox XML; round-trip property tests.
 
 ## Recently completed
-- [x] Bootstrap: repo scaffold per §3 of CLAUDE_CODE_PROMPT.md (session 1)
+- [x] Bootstrap: repo scaffold per §3 (session 1)
+- [x] `crates/rekordbox-db`: SQLCipher read-only connection, track/playlist/cue queries, ANLZ beat-grid parser, 38 tests passing (session 2)
 
 ## Phase 1 checklist
 - [x] Repo scaffold per §3
-- [ ] CI: lint, test, build matrix (macOS, Windows)
-- [ ] `crates/rekordbox-db`: SQLCipher key derivation; open `master.db` read-only; queries; integration test
+- [ ] CI: lint, test, build matrix (macOS, Windows) — workflow written; not yet verified against real CI
+- [x] `crates/rekordbox-db`: SQLCipher key derivation; open `master.db` read-only; queries; integration test
 - [ ] `crates/rekordbox-xml`: parse and emit Rekordbox XML; round-trip property tests
 - [ ] `crates/cache`: SQLite WAL store; schema versioning; load sqlite-vec extension
 - [ ] `apps/desktop`: Tauri 2 scaffold, React + Vite + Tailwind. First-run wizard locates `master.db` and validates.

@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
-edition = "2021"
 
 members = [
     "crates/rekordbox-db",
@@ -36,8 +35,6 @@ thiserror = "1"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Database
-rusqlite = { version = "0.31", features = ["bundled"] }
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

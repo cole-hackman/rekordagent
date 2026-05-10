@@ -9,5 +9,5 @@ description = "Local SQLite WAL cache with schema versioning and sqlite-vec exte
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
-rusqlite = { workspace = true }
+rusqlite = { version = "0.34", features = ["bundled"] }
 tracing = { workspace = true }

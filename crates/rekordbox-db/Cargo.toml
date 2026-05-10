@@ -9,8 +9,9 @@ description = "Read-only SQLCipher access to the Rekordbox 7 master.db"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
-rusqlite = { workspace = true }
 tracing = { workspace = true }
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tempfile = "3"
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }
