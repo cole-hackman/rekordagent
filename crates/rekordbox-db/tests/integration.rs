@@ -48,7 +48,10 @@ fn tracks_returns_live_tracks_only() {
 fn track_bpm_converted_correctly() {
     let (_p, db) = make_fixture_db();
     let tracks = db.tracks().expect("tracks");
-    let alpha = tracks.iter().find(|t| t.title == "Test Track Alpha").unwrap();
+    let alpha = tracks
+        .iter()
+        .find(|t| t.title == "Test Track Alpha")
+        .unwrap();
     // seed inserts BPM = 13200 → 132.00
     let bpm = alpha.bpm.expect("bpm present");
     assert!((bpm - 132.0).abs() < 0.001, "bpm was {bpm}");

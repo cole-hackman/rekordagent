@@ -6,7 +6,10 @@ pub fn parse(xml: &str) -> Result<Collection> {
     let doc = roxmltree::Document::parse(xml).context("parsing Rekordbox XML")?;
     let root = doc.root_element();
     if root.tag_name().name() != "DJ_PLAYLISTS" {
-        bail!("expected root element DJ_PLAYLISTS, got {}", root.tag_name().name());
+        bail!(
+            "expected root element DJ_PLAYLISTS, got {}",
+            root.tag_name().name()
+        );
     }
 
     let mut collection = Collection::default();
@@ -124,7 +127,10 @@ fn parse_node(node: XmlNode<'_, '_>) -> Result<Node> {
                 .filter(|n| n.is_element() && n.tag_name().name() == "NODE")
                 .map(parse_node)
                 .collect();
-            Ok(Node::Folder { name, children: children? })
+            Ok(Node::Folder {
+                name,
+                children: children?,
+            })
         }
         1 => {
             let key_type: u8 = opt_attr_parse(node, "KeyType")?.unwrap_or(0);
@@ -137,7 +143,11 @@ fn parse_node(node: XmlNode<'_, '_>) -> Result<Node> {
                         .context("TRACK Key must be u32")
                 })
                 .collect();
-            Ok(Node::Playlist { name, key_type, track_ids: track_ids? })
+            Ok(Node::Playlist {
+                name,
+                key_type,
+                track_ids: track_ids?,
+            })
         }
         other => bail!("unknown NODE Type {other}"),
     }
@@ -146,8 +156,12 @@ fn parse_node(node: XmlNode<'_, '_>) -> Result<Node> {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 fn attr<'a>(node: XmlNode<'a, '_>, name: &str) -> Result<&'a str> {
-    node.attribute(name)
-        .with_context(|| format!("missing required attribute {name} on <{}>", node.tag_name().name()))
+    node.attribute(name).with_context(|| {
+        format!(
+            "missing required attribute {name} on <{}>",
+            node.tag_name().name()
+        )
+    })
 }
 
 fn opt_attr(node: XmlNode<'_, '_>, name: &str) -> Option<String> {
@@ -160,11 +174,10 @@ where
     T::Err: std::error::Error + Send + Sync + 'static,
 {
     match node.attribute(name) {
-        Some(s) if !s.is_empty() => {
-            s.parse::<T>()
-                .map(Some)
-                .with_context(|| format!("parsing attribute {name}={s:?}"))
-        }
+        Some(s) if !s.is_empty() => s
+            .parse::<T>()
+            .map(Some)
+            .with_context(|| format!("parsing attribute {name}={s:?}")),
         _ => Ok(None),
     }
 }
@@ -266,7 +279,10 @@ mod tests {
         assert_eq!(col.playlists.len(), 1);
         if let Node::Folder { children, .. } = &col.playlists[0] {
             assert_eq!(children.len(), 1);
-            if let Node::Playlist { name, track_ids, .. } = &children[0] {
+            if let Node::Playlist {
+                name, track_ids, ..
+            } = &children[0]
+            {
                 assert_eq!(name, "Techno Set");
                 assert_eq!(track_ids, &[1, 2]);
             } else {

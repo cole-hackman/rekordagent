@@ -24,14 +24,16 @@ pub fn for_track(conn: &Connection, content_id: i64) -> Result<Vec<HotCue>> {
     let sql = format!("{SELECT} WHERE ContentID = ?1 ORDER BY InMsec");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![content_id], row_to_cue)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn all(conn: &Connection) -> Result<Vec<HotCue>> {
     let sql = format!("{SELECT} ORDER BY ContentID, InMsec");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_to_cue)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -44,7 +46,8 @@ mod tests {
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.into_temp_path();
         let conn = create_test_db(&path).unwrap();
-        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql"))
+            .unwrap();
         conn.execute_batch(include_str!("../sql/seed.sql")).unwrap();
         drop(conn);
         path

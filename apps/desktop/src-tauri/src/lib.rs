@@ -19,14 +19,10 @@ fn read_config(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
 }
 
 fn write_config(app: &tauri::AppHandle, config: &serde_json::Value) -> Result<(), String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?;
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     let path = config_dir.join("config.json");
-    std::fs::write(&path, serde_json::to_string_pretty(config).unwrap())
-        .map_err(|e| e.to_string())
+    std::fs::write(&path, serde_json::to_string_pretty(config).unwrap()).map_err(|e| e.to_string())
 }
 
 // ── Library commands ─────────────────────────────────────────────────────────
@@ -152,23 +148,17 @@ async fn play_track(
 }
 
 #[tauri::command]
-async fn pause_audio(
-    player: tauri::State<'_, audio::AudioPlayer>,
-) -> Result<(), String> {
+async fn pause_audio(player: tauri::State<'_, audio::AudioPlayer>) -> Result<(), String> {
     player.send(audio::AudioCmd::Pause)
 }
 
 #[tauri::command]
-async fn resume_audio(
-    player: tauri::State<'_, audio::AudioPlayer>,
-) -> Result<(), String> {
+async fn resume_audio(player: tauri::State<'_, audio::AudioPlayer>) -> Result<(), String> {
     player.send(audio::AudioCmd::Resume)
 }
 
 #[tauri::command]
-async fn stop_audio(
-    player: tauri::State<'_, audio::AudioPlayer>,
-) -> Result<(), String> {
+async fn stop_audio(player: tauri::State<'_, audio::AudioPlayer>) -> Result<(), String> {
     player.send(audio::AudioCmd::Stop)
 }
 

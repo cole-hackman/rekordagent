@@ -57,7 +57,8 @@ pub fn all(conn: &Connection) -> Result<Vec<Track>> {
     let sql = format!("{SELECT} ORDER BY a.Name, c.Title");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_to_track)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn by_id(conn: &Connection, id: i64) -> Result<Option<Track>> {
@@ -86,7 +87,8 @@ pub fn search(conn: &Connection, query: &str) -> Result<Vec<Track>> {
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![pattern], row_to_track)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -99,7 +101,8 @@ mod tests {
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.into_temp_path();
         let conn = create_test_db(&path).unwrap();
-        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql"))
+            .unwrap();
         conn.execute_batch(include_str!("../sql/seed.sql")).unwrap();
         (path, conn)
     }
@@ -138,7 +141,10 @@ mod tests {
     fn bpm_converted_from_integer_x100() {
         let (_path, conn) = make_db();
         let tracks = all(&conn).unwrap();
-        let alpha = tracks.iter().find(|t| t.title == "Test Track Alpha").unwrap();
+        let alpha = tracks
+            .iter()
+            .find(|t| t.title == "Test Track Alpha")
+            .unwrap();
         // seed.sql inserts BPM = 13200 → 132.00
         assert!((alpha.bpm.unwrap() - 132.0).abs() < 0.001);
     }

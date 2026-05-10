@@ -37,11 +37,9 @@ impl CacheDb {
     /// from trusted paths.
     pub fn load_vec_extension(&self, lib_path: &Path) -> Result<()> {
         unsafe {
-            self.conn
-                .load_extension(lib_path, None)
-                .with_context(|| {
-                    format!("loading sqlite-vec extension from {}", lib_path.display())
-                })?;
+            self.conn.load_extension(lib_path, None).with_context(|| {
+                format!("loading sqlite-vec extension from {}", lib_path.display())
+            })?;
         }
         tracing::info!("sqlite-vec loaded from {}", lib_path.display());
         Ok(())
@@ -92,17 +90,14 @@ impl CacheDb {
              FROM audio_features
              WHERE track_uri = ?1 AND analyzer_version = ?2",
         )?;
-        let mut rows = stmt.query_map(
-            rusqlite::params![track_uri, analyzer_version],
-            |row| {
-                Ok(AudioFeatures {
-                    bpm: row.get(0)?,
-                    musical_key: row.get(1)?,
-                    energy: row.get(2)?,
-                    features_json: row.get(3)?,
-                })
-            },
-        )?;
+        let mut rows = stmt.query_map(rusqlite::params![track_uri, analyzer_version], |row| {
+            Ok(AudioFeatures {
+                bpm: row.get(0)?,
+                musical_key: row.get(1)?,
+                energy: row.get(2)?,
+                features_json: row.get(3)?,
+            })
+        })?;
         match rows.next() {
             Some(r) => Ok(Some(r?)),
             None => Ok(None),
@@ -156,8 +151,15 @@ mod tests {
     #[test]
     fn upsert_and_get_audio_features() {
         let db = CacheDb::open_in_memory().unwrap();
-        db.upsert_audio_features("file:///test.mp3", "v1", Some(132.0), Some("8A"), Some(0.8), None)
-            .unwrap();
+        db.upsert_audio_features(
+            "file:///test.mp3",
+            "v1",
+            Some(132.0),
+            Some("8A"),
+            Some(0.8),
+            None,
+        )
+        .unwrap();
         let feat = db
             .get_audio_features("file:///test.mp3", "v1")
             .unwrap()
@@ -173,7 +175,10 @@ mod tests {
             .unwrap();
         db.upsert_audio_features("file:///t.mp3", "v1", Some(130.0), Some("11B"), None, None)
             .unwrap();
-        let feat = db.get_audio_features("file:///t.mp3", "v1").unwrap().unwrap();
+        let feat = db
+            .get_audio_features("file:///t.mp3", "v1")
+            .unwrap()
+            .unwrap();
         assert!((feat.bpm.unwrap() - 130.0).abs() < 0.001);
         assert_eq!(feat.musical_key.as_deref(), Some("11B"));
     }
@@ -181,7 +186,10 @@ mod tests {
     #[test]
     fn get_missing_returns_none() {
         let db = CacheDb::open_in_memory().unwrap();
-        assert!(db.get_audio_features("file:///nope.mp3", "v1").unwrap().is_none());
+        assert!(db
+            .get_audio_features("file:///nope.mp3", "v1")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -191,8 +199,14 @@ mod tests {
             .unwrap();
         db.upsert_audio_features("file:///t.mp3", "v2", Some(130.0), None, None, None)
             .unwrap();
-        let v1 = db.get_audio_features("file:///t.mp3", "v1").unwrap().unwrap();
-        let v2 = db.get_audio_features("file:///t.mp3", "v2").unwrap().unwrap();
+        let v1 = db
+            .get_audio_features("file:///t.mp3", "v1")
+            .unwrap()
+            .unwrap();
+        let v2 = db
+            .get_audio_features("file:///t.mp3", "v2")
+            .unwrap()
+            .unwrap();
         assert!((v1.bpm.unwrap() - 128.0).abs() < 0.001);
         assert!((v2.bpm.unwrap() - 130.0).abs() < 0.001);
     }

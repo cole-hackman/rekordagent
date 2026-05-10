@@ -60,10 +60,7 @@ fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (
-                hex_digit(bytes[i + 1]),
-                hex_digit(bytes[i + 2]),
-            ) {
+            if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
                 out.push((hi << 4) | lo);
                 i += 3;
                 continue;

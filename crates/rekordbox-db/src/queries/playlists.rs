@@ -18,7 +18,8 @@ pub fn all(conn: &Connection) -> Result<Vec<Playlist>> {
             kind,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn entries(conn: &Connection, playlist_id: i64) -> Result<Vec<PlaylistEntry>> {
@@ -35,7 +36,8 @@ pub fn entries(conn: &Connection, playlist_id: i64) -> Result<Vec<PlaylistEntry>
             track_no: row.get(2)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
@@ -48,7 +50,8 @@ mod tests {
         let tmp = NamedTempFile::new().unwrap();
         let path = tmp.into_temp_path();
         let conn = create_test_db(&path).unwrap();
-        conn.execute_batch(include_str!("../sql/schema.sql")).unwrap();
+        conn.execute_batch(include_str!("../sql/schema.sql"))
+            .unwrap();
         conn.execute_batch(include_str!("../sql/seed.sql")).unwrap();
         drop(conn);
         path

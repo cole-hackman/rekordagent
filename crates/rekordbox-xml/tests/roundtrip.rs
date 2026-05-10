@@ -31,8 +31,18 @@ fn full_collection() -> Collection {
                 rating: Some(255),
                 tonality: Some("8A".into()),
                 tempos: vec![
-                    Tempo { inizio: 0.0, bpm: 132.0, metro: "4/4".into(), battito: 1 },
-                    Tempo { inizio: 180.0, bpm: 132.0, metro: "4/4".into(), battito: 3 },
+                    Tempo {
+                        inizio: 0.0,
+                        bpm: 132.0,
+                        metro: "4/4".into(),
+                        battito: 1,
+                    },
+                    Tempo {
+                        inizio: 180.0,
+                        bpm: 132.0,
+                        metro: "4/4".into(),
+                        battito: 3,
+                    },
                 ],
                 position_marks: vec![
                     PositionMark {
@@ -126,7 +136,11 @@ fn roundtrip_full_collection() {
             assert_eq!(pt.metro, ot.metro, "tempo metro");
             assert_eq!(pt.battito, ot.battito, "tempo battito");
         }
-        assert_eq!(p.position_marks.len(), o.position_marks.len(), "marks count");
+        assert_eq!(
+            p.position_marks.len(),
+            o.position_marks.len(),
+            "marks count"
+        );
         for (pm, om) in p.position_marks.iter().zip(o.position_marks.iter()) {
             assert_eq!(pm.mark_type, om.mark_type, "mark_type");
             assert!((pm.start - om.start).abs() < 0.001, "mark start");
@@ -141,13 +155,27 @@ fn roundtrip_full_collection() {
 
     // playlists structure
     assert_eq!(parsed.playlists.len(), original.playlists.len());
-    if let (Node::Folder { name: pn, children: pc }, Node::Folder { name: on_, children: oc }) =
-        (&parsed.playlists[0], &original.playlists[0])
+    if let (
+        Node::Folder {
+            name: pn,
+            children: pc,
+        },
+        Node::Folder {
+            name: on_,
+            children: oc,
+        },
+    ) = (&parsed.playlists[0], &original.playlists[0])
     {
         assert_eq!(pn, on_);
         assert_eq!(pc.len(), oc.len());
-        if let Node::Folder { children: sub_pc, .. } = &pc[0] {
-            if let Node::Playlist { name, track_ids, .. } = &sub_pc[0] {
+        if let Node::Folder {
+            children: sub_pc, ..
+        } = &pc[0]
+        {
+            if let Node::Playlist {
+                name, track_ids, ..
+            } = &sub_pc[0]
+            {
                 assert_eq!(name, "Techno Set");
                 assert_eq!(track_ids, &[1u32, 2]);
             }

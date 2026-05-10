@@ -32,8 +32,7 @@ const PMAI_MAGIC: &[u8; 4] = b"PMAI";
 const PQTZ_TAG: &[u8; 4] = b"PQTZ";
 
 pub fn read_beat_grid(path: &Path) -> Result<Vec<BeatGridEntry>> {
-    let data = fs::read(path)
-        .with_context(|| format!("reading ANLZ file {}", path.display()))?;
+    let data = fs::read(path).with_context(|| format!("reading ANLZ file {}", path.display()))?;
     parse_beat_grid(&data)
 }
 

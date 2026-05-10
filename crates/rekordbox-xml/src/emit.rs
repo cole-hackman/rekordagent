@@ -138,7 +138,11 @@ fn write_node<W: std::io::Write>(w: &mut Writer<W>, node: &Node) -> Result<()> {
                 w.write_event(Event::End(BytesEnd::new("NODE")))?;
             }
         }
-        Node::Playlist { name, key_type, track_ids } => {
+        Node::Playlist {
+            name,
+            key_type,
+            track_ids,
+        } => {
             let mut el = BytesStart::new("NODE");
             el.push_attribute(("Type", "1"));
             el.push_attribute(("Name", name.as_str()));
@@ -173,7 +177,6 @@ fn opt_attr_display<T: std::fmt::Display>(el: &mut BytesStart, name: &str, val: 
         el.push_attribute((name, v.to_string().as_str()));
     }
 }
-
 
 #[cfg(test)]
 mod tests {
