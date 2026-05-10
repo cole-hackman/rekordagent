@@ -87,3 +87,29 @@
   - Note: Rust `cargo check` for `decks-desktop` requires `libwebkit2gtk-4.1-dev` and `libgtk-3-dev` on Linux — unavailable in this build environment due to package mirror 404s. Build verified on macOS/Windows as primary targets per spec (§1: "macOS first, Windows second, Linux best-effort").
 - Next: Library browser UI — virtualized track table (TanStack Table + TanStack Virtual), filterable, sortable. Requires `list_tracks` IPC command.
 - Blockers: none.
+
+## Session 5 — 2026-05-10
+
+### Plan
+- Task: library browser UI — virtualized track table, filterable, sortable.
+- Goals:
+  1. Add `list_tracks(path)` Tauri IPC command (opens RekordboxDb, returns all tracks via spawn_blocking).
+  2. `src/types.ts`: TypeScript Track type mirroring the Rust struct.
+  3. `src/hooks/useLibrary.ts`: TanStack Query hook caching the track list.
+  4. `src/components/TrackTable.tsx`: TanStack Table + TanStack Virtual; columns title/artist/BPM/key/duration/genre; header-click sort; filter text input.
+  5. Update App.tsx main layout; wrap app in QueryClientProvider.
+  6. Tests; pnpm typecheck + lint green; commit + push.
+
+### End of session
+- Shipped:
+  - `src-tauri/src/lib.rs`: `list_tracks(path)` IPC command — opens RekordboxDb, returns all tracks via `tauri::async_runtime::spawn_blocking` (non-blocking on the JS side).
+  - `src/types.ts`: TypeScript `Track` interface mirroring the Rust struct (snake_case serde output).
+  - `src/ipc.ts`: added `listTracks()` wrapper.
+  - `src/hooks/useLibrary.ts`: TanStack Query hook — `queryKey: ["library", libraryPath]`, `staleTime: Infinity` (load once, no refetch).
+  - `src/main.tsx`: wrapped with `QueryClientProvider`.
+  - `src/components/TrackTable.tsx`: TanStack Table + TanStack Virtual; columns: Title (280px), Artist (180px), BPM (72px, 1dp), Key (60px), Time (64px, M:SS), Genre (130px); header-click sort (asc/desc/none); client-side text filter on title/artist/album/genre; virtualizer renders only visible rows (ROW_H=36px, overscan=20).
+  - `src/App.tsx`: replaced placeholder with filter input in header + `<TrackTable>` in main area.
+  - 15 vitest tests (8 TrackTable + 6 FirstRunWizard + 1 App) all pass; `pnpm typecheck` + `pnpm lint` clean.
+  - Virtualizer mock pattern documented: `useVirtualizer` returns all items in jsdom so row content is testable.
+- Next: Track detail panel — show tags, hot cues list when a row is clicked. Requires `get_track_cues(id)` IPC command.
+- Blockers: none.

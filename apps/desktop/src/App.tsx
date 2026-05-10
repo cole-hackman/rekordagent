@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { FirstRunWizard } from "./components/FirstRunWizard";
+import { TrackTable } from "./components/TrackTable";
 import { useAppStore } from "./store/appStore";
 import { getLibraryPath, validateLibraryPath } from "./ipc";
 
 export default function App() {
   const { libraryPath, trackCount, setLibraryConfigured } = useAppStore();
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("");
 
   useEffect(() => {
     getLibraryPath()
@@ -39,15 +41,22 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-zinc-950 text-zinc-100">
-      <header className="flex items-center border-b border-zinc-800 px-4 py-2">
-        <span className="text-sm font-bold tracking-tight text-zinc-100">decks</span>
-        <span className="ml-3 text-xs text-zinc-500">
+      <header className="flex shrink-0 items-center gap-4 border-b border-zinc-800 px-4 py-2">
+        <span className="text-sm font-bold tracking-tight">decks</span>
+        <span className="text-xs text-zinc-500">
           {trackCount?.toLocaleString()} tracks
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            type="search"
+            placeholder="Filter…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="w-52 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
       </header>
-      <main className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-zinc-500">Library browser coming soon…</p>
-      </main>
+      <TrackTable libraryPath={libraryPath} filter={filter} />
     </div>
   );
 }
