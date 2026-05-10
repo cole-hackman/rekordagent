@@ -1,0 +1,12 @@
+[package]
+name = "classify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Genre decision tree classifier"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }

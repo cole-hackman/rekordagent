@@ -1,0 +1,18 @@
+[package]
+name = "decks-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Facade crate — re-exports and high-level workflows across all decks crates"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+rekordbox-db = { path = "../rekordbox-db" }
+rekordbox-xml = { path = "../rekordbox-xml" }
+cache = { path = "../cache" }
+changes = { path = "../changes" }
+scoring = { path = "../scoring" }
+classify = { path = "../classify" }
