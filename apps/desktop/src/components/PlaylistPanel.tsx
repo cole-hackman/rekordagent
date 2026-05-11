@@ -64,7 +64,10 @@ export function PlaylistPanel({
   }
 
   return (
-    <div className="flex h-72 shrink-0 border-b border-zinc-800 bg-zinc-950">
+    <div
+      data-testid="playlist-panel"
+      className="flex min-h-0 flex-1 border-b border-zinc-800 bg-zinc-950"
+    >
       <div className="flex w-64 shrink-0 flex-col border-r border-zinc-800">
         <div className="border-b border-zinc-800 p-2">
           <input

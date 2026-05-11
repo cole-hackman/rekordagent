@@ -7,6 +7,8 @@ import {
   getApiKey,
   setApiKey,
   deleteApiKey,
+  getClaudeCodeStatus,
+  type ClaudeCodeStatus,
 } from "../ipc";
 import { useAppStore } from "../store/appStore";
 
@@ -25,6 +27,8 @@ export function SettingsPanel({ onClose }: Props) {
   const [showKey, setShowKey] = useState(false);
   const [keySaving, setKeySaving] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
+  const [claudeCodeStatus, setClaudeCodeStatus] =
+    useState<ClaudeCodeStatus | null>(null);
 
   useEffect(() => {
     getApiKey("anthropic_api_key")
@@ -33,6 +37,20 @@ export function SettingsPanel({ onClose }: Props) {
       })
       .catch(() => {})
       .finally(() => setKeyLoaded(true));
+
+    getClaudeCodeStatus()
+      .then(setClaudeCodeStatus)
+      .catch((e) =>
+        setClaudeCodeStatus({
+          installed: false,
+          version: null,
+          logged_in: null,
+          auth_method: null,
+          subscription_type: null,
+          email: null,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
   }, []);
 
   const handleThemeChange = async (newTheme: "dark" | "light") => {
@@ -156,6 +174,49 @@ export function SettingsPanel({ onClose }: Props) {
           </button>
         </section>
 
+        {/* Agent runtime */}
+        <section className="border-b border-zinc-800 px-5 py-4">
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Agent Runtime
+          </h3>
+          {claudeCodeStatus === null ? (
+            <div className="flex justify-center py-3">
+              <div className="h-4 w-4 animate-spin rounded-full border border-zinc-600 border-t-indigo-400" />
+            </div>
+          ) : claudeCodeStatus.installed ? (
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium text-zinc-200">
+                  Claude Code detected
+                </span>
+                <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-400">
+                  {claudeCodeStatus.version ?? "installed"}
+                </span>
+              </div>
+              {claudeCodeStatus.logged_in ? (
+                <p className="mt-2 text-zinc-400">
+                  Signed in as {claudeCodeStatus.email ?? "Claude user"}
+                  {claudeCodeStatus.subscription_type
+                    ? ` with ${titleCase(claudeCodeStatus.subscription_type)} subscription`
+                    : ""}
+                  .
+                </p>
+              ) : (
+                <p className="mt-2 text-zinc-400">Not signed in to Claude Code.</p>
+              )}
+              <p className="mt-2 text-zinc-500">
+                Current chat runtime still uses Anthropic API keys. Claude Code
+                subscription support is detected here but is not wired to chat yet.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
+              Claude Code was not found on this Mac. Current chat runtime uses
+              Anthropic API keys.
+            </div>
+          )}
+        </section>
+
         {/* API Keys */}
         <section className="px-5 py-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
@@ -221,4 +282,8 @@ export function SettingsPanel({ onClose }: Props) {
       </div>
     </div>
   );
+}
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

@@ -24,6 +24,7 @@
 ## Playlist Browsing UX
 
 - Basic playlist list/search/detail exists.
+- The playlist view now fills the main workspace rather than a fixed-height band.
 - Playlist issue indicators are missing.
 - Playlist track rows should support inspect, find in library, and issue badges.
 - Folder hierarchy is flattened; nested folders should become a real tree.
@@ -43,7 +44,8 @@
 
 ## Settings UX
 
-- Theme, library path, and Anthropic key are present.
+- Theme, library path, Anthropic key, and Claude Code local status detection are present.
+- The app now distinguishes current API-key chat support from future Claude Code subscription-backed runtime support.
 - Errors are not yet consistently recoverable with copy details.
 - API/model settings are minimal.
 

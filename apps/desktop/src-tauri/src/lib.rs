@@ -16,6 +16,28 @@ struct ExportResult {
     exported_count: usize,
 }
 
+#[derive(Debug, serde::Serialize)]
+struct ClaudeCodeStatus {
+    installed: bool,
+    version: Option<String>,
+    logged_in: Option<bool>,
+    auth_method: Option<String>,
+    subscription_type: Option<String>,
+    email: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ClaudeAuthStatus {
+    #[serde(rename = "loggedIn")]
+    logged_in: Option<bool>,
+    #[serde(rename = "authMethod")]
+    auth_method: Option<String>,
+    email: Option<String>,
+    #[serde(rename = "subscriptionType")]
+    subscription_type: Option<String>,
+}
+
 fn cache_db(app: &tauri::AppHandle) -> Result<cache::CacheDb, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
@@ -267,6 +289,99 @@ async fn delete_api_key(service: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_claude_code_status() -> Result<ClaudeCodeStatus, String> {
+    tauri::async_runtime::spawn_blocking(detect_claude_code_status)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn detect_claude_code_status() -> ClaudeCodeStatus {
+    let Some(binary) = find_claude_binary() else {
+        return ClaudeCodeStatus {
+            installed: false,
+            version: None,
+            logged_in: None,
+            auth_method: None,
+            subscription_type: None,
+            email: None,
+            error: None,
+        };
+    };
+
+    let version = std::process::Command::new(&binary)
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+            } else {
+                None
+            }
+        })
+        .filter(|value| !value.is_empty());
+
+    let status_output = std::process::Command::new(&binary)
+        .args(["auth", "status"])
+        .output();
+
+    let mut status = ClaudeCodeStatus {
+        installed: true,
+        version,
+        logged_in: None,
+        auth_method: None,
+        subscription_type: None,
+        email: None,
+        error: None,
+    };
+
+    match status_output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            match serde_json::from_str::<ClaudeAuthStatus>(&stdout) {
+                Ok(auth) => {
+                    status.logged_in = auth.logged_in;
+                    status.auth_method = auth.auth_method;
+                    status.subscription_type = auth.subscription_type;
+                    status.email = auth.email;
+                }
+                Err(e) => {
+                    status.error = Some(format!("Could not parse Claude Code auth status: {e}"))
+                }
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            status.error = Some(if stderr.is_empty() {
+                "Claude Code auth status failed".to_owned()
+            } else {
+                stderr
+            });
+            status.logged_in = Some(false);
+        }
+        Err(e) => status.error = Some(e.to_string()),
+    }
+
+    status
+}
+
+fn find_claude_binary() -> Option<std::path::PathBuf> {
+    let candidates = [
+        std::path::PathBuf::from("claude"),
+        std::path::PathBuf::from("/opt/homebrew/bin/claude"),
+        std::path::PathBuf::from("/usr/local/bin/claude"),
+    ];
+
+    candidates.into_iter().find(|candidate| {
+        std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    })
 }
 
 // ── Conversation commands ────────────────────────────────────────────────────
@@ -716,6 +831,7 @@ pub fn run() {
             get_api_key,
             set_api_key,
             delete_api_key,
+            get_claude_code_status,
             list_conversations,
             create_conversation,
             load_conversation,

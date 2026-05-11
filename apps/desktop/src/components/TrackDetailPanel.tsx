@@ -75,7 +75,7 @@ interface Props {
 }
 
 export function TrackDetailPanel({ track, libraryPath, isPlaying, onTogglePlay }: Props) {
-  const { data: cues = [], isLoading: cuesLoading } = useTrackCues(
+  const { data: cues = [], isLoading: cuesLoading, error: cuesError } = useTrackCues(
     libraryPath,
     track.id,
   );
@@ -174,6 +174,11 @@ export function TrackDetailPanel({ track, libraryPath, isPlaying, onTogglePlay }
         {cuesLoading ? (
           <div className="flex justify-center py-2">
             <div className="h-4 w-4 animate-spin rounded-full border border-zinc-600 border-t-indigo-400" />
+          </div>
+        ) : cuesError ? (
+          <div className="rounded border border-red-900/50 bg-red-950/30 px-2 py-2 text-xs text-red-300">
+            <p className="font-medium">Cue load failed</p>
+            <p className="mt-1 break-words text-red-300/80">{cuesError.message}</p>
           </div>
         ) : sortedCues.length === 0 ? (
           <p className="text-xs text-zinc-600">No cues.</p>

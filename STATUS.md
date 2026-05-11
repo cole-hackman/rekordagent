@@ -8,7 +8,7 @@ Manual real-library verification remains the main release blocker. `master.db` w
 
 ## Verification baseline
 - `cargo test --workspace`: passing as of 2026-05-11
-- `pnpm test`: passing as of 2026-05-11 (90 tests)
+- `pnpm test`: passing as of 2026-05-11 (93 tests)
 - `pnpm typecheck`: passing as of 2026-05-11
 - `pnpm lint`: passing as of 2026-05-11
 - `pnpm build`: passing as of 2026-05-11
@@ -22,10 +22,10 @@ Manual real-library verification remains the main release blocker. `master.db` w
 - [x] `crates/cache`: SQLite WAL cache with schema migrations and audio-feature cache.
 - [x] Desktop app: Tauri 2, React, Vite, Tailwind, first-run library selection and validation.
 - [x] Library UI: virtualized track table with filter and sort.
-- [x] Track detail UI: metadata and cue display.
+- [x] Track detail UI: metadata and cue display, with visible cue-load failures.
 - [x] Audio preview: native rodio play/pause for selected track.
 - [ ] Waveform rendering and scrub controls: deferred; current UI has a placeholder only.
-- [x] Settings: theme, library path change, Anthropic API key in OS keychain.
+- [x] Settings: theme, library path change, Anthropic API key in OS keychain, and Claude Code install/login/subscription detection.
 - [x] Agent read-only MVP tools: search, get track, list playlists, get playlist, list cues, orphan scan, duplicate scan, broken metadata scan.
 - [x] Playlist support: backend playlist detail tool and basic playlist panel UI.
 - [x] Conversation persistence.
@@ -38,6 +38,8 @@ Manual real-library verification remains the main release blocker. `master.db` w
 - [x] Final UI audit and redesign recommendations documented.
 - [x] Implemented phase 11 UI polish (empty states, panel layout, zero values, placeholder waveform).
 - [x] Deterministic synthetic fixture generator: `scripts/seed-test-library.sh`.
+- [x] Playlist view fills available workspace height instead of a fixed short band.
+- [x] Cue query supports additional real-library `djmdCue` column variants.
 
 ## MVP phase checklist
 - [x] Phase 0 — Repo familiarization and status reconciliation.
@@ -56,3 +58,4 @@ Manual real-library verification remains the main release blocker. `master.db` w
 ## Blockers
 - Real Rekordbox 7 `master.db` manual testing requires access to a local user library.
 - Packaged app artifacts exist at `target/release/bundle/macos/decks.app` and `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg`, but manual launch verification against a real/disposable library is still required.
+- Claude Code is detected locally, but the in-app agent runtime still uses Anthropic API keys until a dedicated Claude Code adapter is implemented.

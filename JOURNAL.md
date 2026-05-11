@@ -320,3 +320,20 @@
   - `pnpm e2e` passed: 4 Playwright tests.
 - Remaining:
   - Manual real-library and packaged-app verification before tagging.
+
+### Checkpoint — Real-library bug fixes and runtime clarity
+- Shipped:
+  - Fixed the playlist view height so it fills the main workspace instead of rendering as a short fixed band with blank space below.
+  - Made cue loading errors visible in the track inspector.
+  - Hardened `djmdCue` reads for real-library column variants such as `TrackID`, `InMS`, `OutMS`, `Type`, `ColorID`, and `Comment`.
+  - Added Settings detection for local Claude Code install/login/subscription status.
+  - Clarified in Settings and chat errors that the current MVP agent runtime still uses Anthropic API keys, while Claude Code subscription support is a separate runtime adapter.
+- Verification:
+  - Targeted playlist/detail/settings frontend tests passed.
+  - Targeted Rekordbox cue variant backend test passed.
+  - `cargo test --workspace` passed.
+  - `pnpm test` passed: 93 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+- Remaining:
+  - Implement a real Claude Code runtime adapter if subscription-backed in-app chat is required for MVP.

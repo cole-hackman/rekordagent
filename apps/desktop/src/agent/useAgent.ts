@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   getApiKey,
+  getClaudeCodeStatus,
   listConversations,
   createConversation,
   loadConversation as loadConversationIpc,
@@ -89,9 +90,16 @@ export function useAgent(libraryPath: string | null) {
 
       const apiKey = await getApiKey("anthropic_api_key").catch(() => null);
       if (!apiKey) {
-        setError(
-          "No Anthropic API key set. Add one in Settings (⚙) to use the agent.",
-        );
+        const claudeCode = await getClaudeCodeStatus().catch(() => null);
+        if (claudeCode?.installed && claudeCode.logged_in) {
+          setError(
+            "Claude Code is installed and signed in, but this chat runtime currently uses Anthropic API keys. Add an API key in Settings while Claude Code runtime support is being wired in.",
+          );
+        } else {
+          setError(
+            "No Anthropic API key set. Add one in Settings (⚙) to use the agent.",
+          );
+        }
         return;
       }
 

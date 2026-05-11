@@ -100,6 +100,17 @@ describe("TrackDetailPanel", () => {
     expect(screen.getByText("No cues.")).toBeInTheDocument();
   });
 
+  it("shows cue load errors instead of silently hiding failures", () => {
+    vi.mocked(useTrackCues).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("no such column: InMsec"),
+    } as unknown as ReturnType<typeof useTrackCues>);
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    expect(screen.getByText(/Cue load failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/no such column: InMsec/i)).toBeInTheDocument();
+  });
+
   it("shows rating stars", () => {
     render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByLabelText("3 stars")).toBeInTheDocument();

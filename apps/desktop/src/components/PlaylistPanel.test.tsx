@@ -47,6 +47,13 @@ beforeEach(() => {
 });
 
 describe("PlaylistPanel", () => {
+  it("fills the available main panel height", async () => {
+    render(<PlaylistPanel libraryPath="/db" />, { wrapper });
+    const panel = await screen.findByTestId("playlist-panel");
+    expect(panel).toHaveClass("flex-1");
+    expect(panel).toHaveClass("min-h-0");
+  });
+
   it("renders playlists and selected playlist tracks", async () => {
     render(<PlaylistPanel libraryPath="/db" />, { wrapper });
     expect(await screen.findByText("Techno Set")).toBeInTheDocument();

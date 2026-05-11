@@ -105,6 +105,20 @@ export async function deleteApiKey(service: string): Promise<void> {
   return invoke<void>("delete_api_key", { service });
 }
 
+export interface ClaudeCodeStatus {
+  installed: boolean;
+  version: string | null;
+  logged_in: boolean | null;
+  auth_method: string | null;
+  subscription_type: string | null;
+  email: string | null;
+  error: string | null;
+}
+
+export async function getClaudeCodeStatus(): Promise<ClaudeCodeStatus> {
+  return invoke<ClaudeCodeStatus>("get_claude_code_status");
+}
+
 // ── Conversations ────────────────────────────────────────────────────────────
 
 export async function listConversations(

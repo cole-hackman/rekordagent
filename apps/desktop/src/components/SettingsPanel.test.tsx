@@ -5,6 +5,15 @@ vi.mock("../ipc", () => ({
   getApiKey: vi.fn().mockResolvedValue(null),
   setApiKey: vi.fn().mockResolvedValue(undefined),
   deleteApiKey: vi.fn().mockResolvedValue(undefined),
+  getClaudeCodeStatus: vi.fn().mockResolvedValue({
+    installed: false,
+    version: null,
+    logged_in: null,
+    auth_method: null,
+    subscription_type: null,
+    email: null,
+    error: null,
+  }),
   setTheme: vi.fn().mockResolvedValue(undefined),
   pickLibraryPath: vi.fn().mockResolvedValue(null),
   validateLibraryPath: vi.fn().mockResolvedValue(42),
@@ -15,6 +24,7 @@ import {
   getApiKey,
   setApiKey,
   deleteApiKey,
+  getClaudeCodeStatus,
   setTheme as setThemeIpc,
   pickLibraryPath,
   validateLibraryPath,
@@ -42,6 +52,15 @@ beforeEach(() => {
   mockStore.libraryPath = "/tmp/master.db";
   mockStore.theme = "dark";
   vi.mocked(getApiKey).mockResolvedValue(null);
+  vi.mocked(getClaudeCodeStatus).mockResolvedValue({
+    installed: false,
+    version: null,
+    logged_in: null,
+    auth_method: null,
+    subscription_type: null,
+    email: null,
+    error: null,
+  });
 });
 
 describe("SettingsPanel", () => {
@@ -143,6 +162,23 @@ describe("SettingsPanel", () => {
         (screen.getByPlaceholderText("sk-ant-…") as HTMLInputElement).value,
       ).toBe("sk-ant-existing"),
     );
+  });
+
+  it("shows Claude Code subscription status separately from API key support", async () => {
+    vi.mocked(getClaudeCodeStatus).mockResolvedValue({
+      installed: true,
+      version: "2.1.126 (Claude Code)",
+      logged_in: true,
+      auth_method: "claude.ai",
+      subscription_type: "pro",
+      email: "dj@example.com",
+      error: null,
+    });
+    render(<SettingsPanel onClose={vi.fn()} />);
+    expect(await screen.findByText("Agent Runtime")).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pro subscription/i)).toBeInTheDocument();
+    expect(screen.getByText(/Current chat runtime still uses Anthropic API/i)).toBeInTheDocument();
   });
 
   it("saves Anthropic key when Save is clicked", async () => {

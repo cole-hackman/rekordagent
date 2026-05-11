@@ -19,3 +19,19 @@
 **Trade-offs accepted:**
 - System WebView differences (Safari on macOS, WebView2 on Windows, WebKitGTK on Linux) mean we must test on all three. Mitigation: CI matrix + explicit polyfills for any missing APIs.
 - Tauri's plugin ecosystem is smaller than Electron's. Mitigation: most functionality we need is in Rust crates, not JS plugins.
+
+## ADR-0002 — Keep MVP Agent Runtime on Anthropic API, Detect Claude Code Separately
+
+**Date:** 2026-05-11
+**Status:** Accepted
+
+**Context:** The current chat implementation uses the Anthropic Messages API from the desktop frontend, authenticated by an Anthropic API key stored in the OS keychain. Users with Claude Pro/Max may also be signed in to Claude Code locally, but that subscription is not the same product surface as a generic third-party app API key. Claude Code can authenticate with a Claude.ai subscription for terminal-based Claude Code workflows.
+
+**Decision:** For MVP, keep the in-app chat runtime on the existing Anthropic API-key path and add local Claude Code detection in Settings/error states. Do not claim Claude subscription support until a dedicated Claude Code runtime adapter is implemented and tested.
+
+**Reasons:**
+1. The current agent loop depends on Messages API tool calls and streaming behavior.
+2. Claude Code subscription authentication is CLI-owned; treating it as a drop-in API key would be misleading and brittle.
+3. Detecting Claude Code status gives users an accurate explanation without blocking current agent functionality.
+
+**Follow-up:** Add a separate Claude Code runtime adapter if it can preserve tool execution, conversation persistence, and safe staged-change behavior without direct Rekordbox DB writes.
