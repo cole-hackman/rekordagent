@@ -230,3 +230,17 @@
   2. Create `docs/MVP_PLAN.md`, `docs/MANUAL_TEST_PLAN.md`, and `docs/UI_AUDIT.md` as source-of-truth tracking files.
   3. Run `cargo test --workspace`, `pnpm test`, `pnpm typecheck`, and `pnpm lint` after the docs-only phase.
 - Scope note: first checkpoint is docs-only. Feature implementation starts after the project state is accurately recorded.
+
+### Checkpoint — Phase 0 + read-only tools
+- Shipped:
+  - Reconciled `README.md`, `STATUS.md`, `docs/data-model.md`, and `docs/tools.md` with current implementation.
+  - Added `docs/MVP_PLAN.md`, `docs/MANUAL_TEST_PLAN.md`, `docs/UI_AUDIT.md`, and draft release notes for `v0.1.0` / `v0.2.0`.
+  - Added read-only MVP agent tools: `library.get_track`, `library.get_playlist`, `library.list_cues`, `health.duplicate_scan`, and `health.broken_link_scan`.
+  - Added basic playlist panel UI with playlist filtering and selected playlist track view.
+  - Added readable chat tool result summaries.
+- Verification:
+  - `cargo test --workspace` passed.
+  - `pnpm test` passed: 80 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+- Next: implement conversation persistence in the cache layer and wire it into chat.

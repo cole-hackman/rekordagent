@@ -1,14 +1,14 @@
 # Status
 
 ## Current phase
-Phase 0 — MVP reconciliation and source-of-truth docs.
+Phase 4 — conversation persistence.
 
 ## Current task
-Make the project Markdown match the implementation, then proceed through the MVP plan in `docs/MVP_PLAN.md`.
+Persist agent conversations locally using the existing cache layer.
 
 ## Verification baseline
 - `cargo test --workspace`: passing as of 2026-05-11
-- `pnpm test`: passing as of 2026-05-11 (71 tests)
+- `pnpm test`: passing as of 2026-05-11 (80 tests)
 - `pnpm typecheck`: passing as of 2026-05-11
 - `pnpm lint`: passing as of 2026-05-11
 
@@ -23,8 +23,8 @@ Make the project Markdown match the implementation, then proceed through the MVP
 - [x] Audio preview: native rodio play/pause for selected track.
 - [ ] Waveform rendering and scrub controls: deferred; current UI has a placeholder only.
 - [x] Settings: theme, library path change, Anthropic API key in OS keychain.
-- [~] Agent chat: streaming Claude loop with `library.search`, `library.list_playlists`, and `health.orphan_scan`.
-- [~] Playlist support: backend can list playlists and entries; no dedicated playlist UI or playlist-detail agent tool yet.
+- [x] Agent read-only MVP tools: search, get track, list playlists, get playlist, list cues, orphan scan, duplicate scan, broken metadata scan.
+- [x] Playlist support: backend playlist detail tool and basic playlist panel UI.
 - [ ] Conversation persistence.
 - [ ] Safe staged changes and diff review.
 - [ ] Export accepted changes to Rekordbox XML.
@@ -34,11 +34,11 @@ Make the project Markdown match the implementation, then proceed through the MVP
 - [ ] Final UI audit and redesign recommendations.
 
 ## MVP phase checklist
-- [~] Phase 0 — Repo familiarization and status reconciliation.
+- [x] Phase 0 — Repo familiarization and status reconciliation.
 - [ ] Phase 1 — Stabilize current foundation and tag `v0.1.0`.
-- [ ] Phase 2 — Define MVP agent and playlist scope.
-- [ ] Phase 3 — Implement missing read-only agent tools and playlist view.
-- [ ] Phase 4 — Persist conversations.
+- [x] Phase 2 — Define MVP agent and playlist scope.
+- [x] Phase 3 — Implement missing read-only agent tools and playlist view.
+- [~] Phase 4 — Persist conversations.
 - [ ] Phase 5 — Safe staged changes system.
 - [ ] Phase 6 — Inline diff review UI.
 - [ ] Phase 7 — XML export.

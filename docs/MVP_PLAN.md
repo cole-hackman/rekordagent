@@ -10,9 +10,9 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 
 - [x] Phase 0 — Repo familiarization and status reconciliation.
 - [ ] Phase 1 — Stabilize current foundation and tag `v0.1.0`.
-- [ ] Phase 2 — Define MVP agent and playlist scope.
-- [ ] Phase 3 — Implement missing read-only agent tools and playlist view.
-- [ ] Phase 4 — Conversation persistence.
+- [x] Phase 2 — Define MVP agent and playlist scope.
+- [x] Phase 3 — Implement missing read-only agent tools and playlist view.
+- [~] Phase 4 — Conversation persistence.
 - [ ] Phase 5 — Safe staged changes system.
 - [ ] Phase 6 — Inline diff review UI.
 - [ ] Phase 7 — XML export.
@@ -47,19 +47,19 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 
 ## Phase 2 — Define MVP Agent + Playlist Scope
 
-- [ ] Confirm MVP read-only tools: `library.search`, `library.get_track`, `library.list_playlists`, `library.get_playlist`, `library.list_cues`, `health.orphan_scan`, `health.duplicate_scan`, `health.broken_link_scan`.
-- [ ] Confirm playlist UX: list/sidebar, playlist track view, playlist search/filter, agent playlist questions, issue detection.
-- [ ] Confirm playlist mutations are staged only and never direct DB writes.
-- [ ] Update docs if implementation changes the tool contracts.
+- [x] Confirm MVP read-only tools: `library.search`, `library.get_track`, `library.list_playlists`, `library.get_playlist`, `library.list_cues`, `health.orphan_scan`, `health.duplicate_scan`, `health.broken_link_scan`.
+- [x] Confirm playlist UX: list/sidebar, playlist track view, playlist search/filter, agent playlist questions, issue detection.
+- [x] Confirm playlist mutations are staged only and never direct DB writes.
+- [x] Update docs if implementation changes the tool contracts.
 
 ## Phase 3 — Missing Read-Only Agent Tools
 
-- [ ] Add Rust/Tauri commands for missing tool calls.
-- [ ] Add TypeScript IPC wrappers and type fixes.
-- [ ] Expand agent schemas and tool result payloads.
-- [ ] Render useful tool result summaries in chat.
-- [ ] Add playlist list/detail UI.
-- [ ] Add Rust and Vitest coverage.
+- [x] Add Rust/Tauri commands for missing tool calls.
+- [x] Add TypeScript IPC wrappers and type fixes.
+- [x] Expand agent schemas and tool result payloads.
+- [x] Render useful tool result summaries in chat.
+- [x] Add playlist list/detail UI.
+- [x] Add Rust and Vitest coverage.
 
 ## Phase 4 — Conversation Persistence
 

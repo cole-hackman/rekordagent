@@ -137,6 +137,30 @@ describe("ChatPanel", () => {
     expect(screen.queryByText('{"tracks":[]}')).toBeNull();
   });
 
+  it("renders readable tool result summaries", () => {
+    agentState.messages = [
+      {
+        role: "tool_results",
+        results: [
+          {
+            type: "tool_result",
+            tool_use_id: "tc_1",
+            content: JSON.stringify({
+              tool: "library.get_playlist",
+              detail: {
+                playlist: { name: "Techno Set" },
+                tracks: [{ title: "Dark Matter" }, { title: "Acid Rain" }],
+              },
+            }),
+          },
+        ],
+      },
+    ];
+    render(<ChatPanel {...defaultProps} />);
+    expect(screen.getByText("Techno Set")).toBeTruthy();
+    expect(screen.getByText("2 tracks")).toBeTruthy();
+  });
+
   it("shows error message", () => {
     agentState.error = "No API key set";
     render(<ChatPanel {...defaultProps} />);

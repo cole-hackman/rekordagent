@@ -12,7 +12,7 @@
 
 ### Implemented Now
 
-The current chat panel exposes `library.search`, `library.list_playlists`, and `health.orphan_scan`. The full MVP read-only surface below is the implementation target before staged changes.
+The current chat panel exposes the MVP read-only surface: `library.search`, `library.get_track`, `library.list_playlists`, `library.get_playlist`, `library.list_cues`, `health.orphan_scan`, `health.duplicate_scan`, and `health.broken_link_scan`.
 
 ### `library.search`
 Search tracks by text query across title, artist, album, genre, comment.

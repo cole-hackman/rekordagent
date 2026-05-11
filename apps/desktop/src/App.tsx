@@ -4,6 +4,7 @@ import { TrackTable } from "./components/TrackTable";
 import { TrackDetailPanel } from "./components/TrackDetailPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ChatPanel } from "./components/ChatPanel";
+import { PlaylistPanel } from "./components/PlaylistPanel";
 import { useAppStore } from "./store/appStore";
 import { useAudioPlayer } from "./hooks/useAudioPlayer";
 import { getLibraryPath, validateLibraryPath, getTheme } from "./ipc";
@@ -17,6 +18,7 @@ export default function App() {
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showPlaylists, setShowPlaylists] = useState(false);
   const audio = useAudioPlayer(selectedTrack);
 
   // Apply theme class to <html>
@@ -77,6 +79,13 @@ export default function App() {
             className="w-52 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
           />
           <button
+            onClick={() => setShowPlaylists((v) => !v)}
+            aria-label={showPlaylists ? "Hide playlists" : "Show playlists"}
+            className={`rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${showPlaylists ? "text-indigo-400" : "text-zinc-400"}`}
+          >
+            Playlists
+          </button>
+          <button
             onClick={() => setShowChat((v) => !v)}
             aria-label={showChat ? "Close agent" : "Open agent"}
             className={`rounded-md p-1.5 transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${showChat ? "text-indigo-400" : "text-zinc-400"}`}
@@ -102,12 +111,15 @@ export default function App() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <TrackTable
-          libraryPath={libraryPath}
-          filter={filter}
-          selectedTrackId={selectedTrack?.id ?? null}
-          onSelect={setSelectedTrack}
-        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          {showPlaylists && <PlaylistPanel libraryPath={libraryPath} />}
+          <TrackTable
+            libraryPath={libraryPath}
+            filter={filter}
+            selectedTrackId={selectedTrack?.id ?? null}
+            onSelect={setSelectedTrack}
+          />
+        </div>
         {selectedTrack && (
           <TrackDetailPanel
             track={selectedTrack}

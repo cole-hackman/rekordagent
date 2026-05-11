@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Track, HotCue, Playlist } from "./types";
+import type {
+  Track,
+  HotCue,
+  Playlist,
+  PlaylistDetail,
+  DuplicateGroup,
+  BrokenMetadataReport,
+} from "./types";
 
 export async function pickLibraryPath(): Promise<string | null> {
   const result = await open({
@@ -19,6 +26,13 @@ export async function validateLibraryPath(path: string): Promise<number> {
 
 export async function listTracks(path: string): Promise<Track[]> {
   return invoke<Track[]>("list_tracks", { path });
+}
+
+export async function getTrack(
+  path: string,
+  trackId: string,
+): Promise<Track | null> {
+  return invoke<Track | null>("get_track", { path, trackId });
 }
 
 export async function getTrackCues(
@@ -97,7 +111,23 @@ export async function listPlaylists(path: string): Promise<Playlist[]> {
   return invoke<Playlist[]>("list_playlists", { path });
 }
 
+export async function getPlaylist(
+  path: string,
+  playlistId: string,
+): Promise<PlaylistDetail | null> {
+  return invoke<PlaylistDetail | null>("get_playlist", { path, playlistId });
+}
+
 export async function healthOrphanScan(path: string): Promise<Track[]> {
   return invoke<Track[]>("health_orphan_scan", { path });
 }
 
+export async function healthDuplicateScan(path: string): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("health_duplicate_scan", { path });
+}
+
+export async function healthBrokenLinkScan(
+  path: string,
+): Promise<BrokenMetadataReport> {
+  return invoke<BrokenMetadataReport>("health_broken_link_scan", { path });
+}

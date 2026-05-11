@@ -3,6 +3,12 @@ mod audio;
 use std::path::Path;
 use tauri::Manager;
 
+#[derive(serde::Serialize)]
+struct PlaylistDetail {
+    playlist: decks_core::rekordbox_db::Playlist,
+    tracks: Vec<decks_core::rekordbox_db::Track>,
+}
+
 // ── Config helpers ────────────────────────────────────────────────────────────
 
 fn read_config(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -49,6 +55,20 @@ async fn list_tracks(path: String) -> Result<Vec<decks_core::rekordbox_db::Track
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
             .map_err(|e| e.to_string())?;
         db.tracks().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_track(
+    path: String,
+    track_id: String,
+) -> Result<Option<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.track_by_id(&track_id).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -112,6 +132,32 @@ async fn list_playlists(path: String) -> Result<Vec<decks_core::rekordbox_db::Pl
 }
 
 #[tauri::command]
+async fn get_playlist(path: String, playlist_id: String) -> Result<Option<PlaylistDetail>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let Some(playlist) = db.playlist_by_id(&playlist_id).map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let entries = db
+            .playlist_entries(&playlist_id)
+            .map_err(|e| e.to_string())?;
+        let mut tracks = Vec::new();
+        for entry in entries {
+            if let Some(track) = db
+                .track_by_id(&entry.content_id)
+                .map_err(|e| e.to_string())?
+            {
+                tracks.push(track);
+            }
+        }
+        Ok(Some(PlaylistDetail { playlist, tracks }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn health_orphan_scan(path: String) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
@@ -126,6 +172,32 @@ async fn health_orphan_scan(path: String) -> Result<Vec<decks_core::rekordbox_db
                     .unwrap_or(false)
             })
             .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn health_duplicate_scan(
+    path: String,
+) -> Result<Vec<decks_core::rekordbox_db::DuplicateGroup>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.duplicate_tracks().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn health_broken_link_scan(
+    path: String,
+) -> Result<decks_core::rekordbox_db::BrokenMetadataReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.broken_metadata_report().map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -228,12 +300,16 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             validate_library_path,
             list_tracks,
+            get_track,
             get_track_cues,
             get_library_path,
             set_library_path,
             library_search,
             list_playlists,
+            get_playlist,
             health_orphan_scan,
+            health_duplicate_scan,
+            health_broken_link_scan,
             get_theme,
             set_theme,
             get_api_key,

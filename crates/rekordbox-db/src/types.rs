@@ -64,6 +64,22 @@ pub struct PlaylistEntry {
     pub track_no: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub title: String,
+    pub artist: Option<String>,
+    pub tracks: Vec<Track>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct BrokenMetadataReport {
+    pub missing_artist: Vec<Track>,
+    pub missing_bpm: Vec<Track>,
+    pub missing_key: Vec<Track>,
+    pub missing_genre: Vec<Track>,
+    pub suspicious: Vec<Track>,
+}
+
 /// A hot cue or memory cue from `djmdCue`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HotCue {

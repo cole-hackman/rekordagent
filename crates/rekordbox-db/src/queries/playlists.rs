@@ -22,6 +22,28 @@ pub fn all(conn: &Connection) -> Result<Vec<Playlist>> {
         .map_err(Into::into)
 }
 
+pub fn by_id(conn: &Connection, id: &str) -> Result<Option<Playlist>> {
+    let mut stmt = conn.prepare(
+        "SELECT ID, Name, ParentID, Seq, Attribute
+         FROM djmdPlaylist
+         WHERE ID = ?1",
+    )?;
+    let mut rows = stmt.query_map(params![id], |row| {
+        let kind = PlaylistKind::from_attribute(row.get::<_, i64>(4)?);
+        Ok(Playlist {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            parent_id: row.get(2)?,
+            seq: row.get(3)?,
+            kind,
+        })
+    })?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
 pub fn entries(conn: &Connection, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
     let mut stmt = conn.prepare(
         "SELECT PlaylistID, ContentID, TrackNo
@@ -83,6 +105,22 @@ mod tests {
         let entries = entries(&conn, "2").unwrap();
         assert_eq!(entries.len(), 2);
         assert!(entries[0].track_no <= entries[1].track_no);
+    }
+
+    #[test]
+    fn by_id_found() {
+        let path = make_db();
+        let conn = create_test_db(&path).unwrap();
+        let playlist = by_id(&conn, "2").unwrap().unwrap();
+        assert_eq!(playlist.name, "Techno Set");
+        assert_eq!(playlist.kind, PlaylistKind::Playlist);
+    }
+
+    #[test]
+    fn by_id_missing() {
+        let path = make_db();
+        let conn = create_test_db(&path).unwrap();
+        assert!(by_id(&conn, "9999").unwrap().is_none());
     }
 
     #[test]

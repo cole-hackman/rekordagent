@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { useAgent } from "../agent/useAgent";
-import type { AssistantMessage } from "../agent/types";
+import type { AssistantMessage, ToolResultBlock } from "../agent/types";
 
 interface Props {
   libraryPath: string;
@@ -63,6 +63,79 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
       {!hasContent && !hasToolCalls && (
         <div className="h-4 w-4 animate-spin rounded-full border border-zinc-700 border-t-indigo-400" />
       )}
+    </div>
+  );
+}
+
+function ToolResultSummary({ result }: { result: ToolResultBlock }) {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(result.content);
+  } catch {
+    return null;
+  }
+
+  if (typeof payload !== "object" || payload === null || !("tool" in payload)) {
+    return null;
+  }
+
+  const tool = String((payload as { tool: unknown }).tool);
+  let title = tool;
+  let detail = "";
+
+  if (tool === "library.search") {
+    const tracks = (payload as { tracks?: unknown[] }).tracks ?? [];
+    title = "Search results";
+    detail = `${tracks.length} tracks`;
+  } else if (tool === "library.list_playlists") {
+    const playlists = (payload as { playlists?: unknown[] }).playlists ?? [];
+    title = "Playlists";
+    detail = `${playlists.length} playlists`;
+  } else if (tool === "library.get_playlist") {
+    const p = payload as {
+      detail?: { playlist?: { name?: string }; tracks?: unknown[] } | null;
+    };
+    title = p.detail?.playlist?.name ?? "Playlist";
+    detail = `${p.detail?.tracks?.length ?? 0} tracks`;
+  } else if (tool === "library.get_track") {
+    const p = payload as { track?: { title?: string } | null };
+    title = p.track?.title ?? "Track not found";
+  } else if (tool === "library.list_cues") {
+    const cues = (payload as { cues?: unknown[] }).cues ?? [];
+    title = "Cues";
+    detail = `${cues.length} cues`;
+  } else if (tool === "health.orphan_scan") {
+    const orphans = (payload as { orphans?: unknown[] }).orphans ?? [];
+    title = "Missing files";
+    detail = `${orphans.length} tracks`;
+  } else if (tool === "health.duplicate_scan") {
+    const groups = (payload as { groups?: unknown[] }).groups ?? [];
+    title = "Duplicate candidates";
+    detail = `${groups.length} groups`;
+  } else if (tool === "health.broken_link_scan") {
+    const report = payload as {
+      report?: {
+        missing_artist?: unknown[];
+        missing_bpm?: unknown[];
+        missing_key?: unknown[];
+        missing_genre?: unknown[];
+        suspicious?: unknown[];
+      };
+    };
+    const count =
+      (report.report?.missing_artist?.length ?? 0) +
+      (report.report?.missing_bpm?.length ?? 0) +
+      (report.report?.missing_key?.length ?? 0) +
+      (report.report?.missing_genre?.length ?? 0) +
+      (report.report?.suspicious?.length ?? 0);
+    title = "Metadata issues";
+    detail = `${count} issues`;
+  }
+
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm">
+      <div className="font-medium text-zinc-200">{title}</div>
+      {detail && <div className="mt-0.5 text-xs text-zinc-500">{detail}</div>}
     </div>
   );
 }
@@ -155,8 +228,16 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
               </div>
             );
           }
-          // tool_results are hidden — they surface as ToolCallCards inside AssistantBubble
-          return null;
+          return (
+            <div key={i} className="flex flex-col gap-2">
+              {msg.results.map((result) => (
+                <ToolResultSummary
+                  key={result.tool_use_id}
+                  result={result}
+                />
+              ))}
+            </div>
+          );
         })}
 
         {error && (

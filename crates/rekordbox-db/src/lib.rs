@@ -19,4 +19,7 @@ mod queries;
 pub mod types;
 
 pub use connection::RekordboxDb;
-pub use types::{BeatGridEntry, CueKind, HotCue, Playlist, PlaylistEntry, PlaylistKind, Track};
+pub use types::{
+    BeatGridEntry, BrokenMetadataReport, CueKind, DuplicateGroup, HotCue, Playlist, PlaylistEntry,
+    PlaylistKind, Track,
+};

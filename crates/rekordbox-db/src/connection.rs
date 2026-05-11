@@ -1,3 +1,4 @@
+use crate::types::{BrokenMetadataReport, DuplicateGroup};
 use crate::{
     queries,
     types::{BeatGridEntry, HotCue, Playlist, PlaylistEntry, Track},
@@ -49,8 +50,22 @@ impl RekordboxDb {
         queries::playlists::all(&self.conn)
     }
 
+    pub fn playlist_by_id(&self, playlist_id: &str) -> Result<Option<Playlist>> {
+        queries::playlists::by_id(&self.conn, playlist_id)
+    }
+
     pub fn playlist_entries(&self, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
         queries::playlists::entries(&self.conn, playlist_id)
+    }
+
+    // ── Health ───────────────────────────────────────────────────────────────
+
+    pub fn duplicate_tracks(&self) -> Result<Vec<DuplicateGroup>> {
+        Ok(queries::health::duplicate_tracks(self.tracks()?))
+    }
+
+    pub fn broken_metadata_report(&self) -> Result<BrokenMetadataReport> {
+        queries::health::broken_metadata_report(self.tracks()?)
     }
 
     // ── Cues ─────────────────────────────────────────────────────────────────
