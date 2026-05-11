@@ -86,4 +86,46 @@ describe("PlaylistPanel", () => {
       expect.objectContaining({ id: "1", title: "Dark Matter" }),
     );
   });
+
+  it("renders folder hierarchy with collapsible folders", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      { id: "1", name: "Gigs", kind: "Folder", parent_id: null, seq: 1 },
+      { id: "2", name: "Friday Night", kind: "Playlist", parent_id: "1", seq: 1 },
+      { id: "3", name: "Saturday Set", kind: "Playlist", parent_id: "1", seq: 2 },
+      { id: "4", name: "Reference", kind: "Playlist", parent_id: null, seq: 2 },
+    ]);
+    render(<PlaylistPanel libraryPath="/db" />, { wrapper });
+
+    // Folder + its children appear (auto-expanded on first load).
+    expect(await screen.findByText("Gigs")).toBeInTheDocument();
+    expect(screen.getByText("Friday Night")).toBeInTheDocument();
+    expect(screen.getByText("Saturday Set")).toBeInTheDocument();
+    expect(screen.getByText("Reference")).toBeInTheDocument();
+
+    // Collapse the folder — children disappear, folder stays.
+    fireEvent.click(screen.getByRole("button", { name: /Gigs/ }));
+    expect(screen.queryByText("Friday Night")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saturday Set")).not.toBeInTheDocument();
+    expect(screen.getByText("Gigs")).toBeInTheDocument();
+    expect(screen.getByText("Reference")).toBeInTheDocument();
+  });
+
+  it("flattens hierarchy while filtering", async () => {
+    vi.mocked(listPlaylists).mockResolvedValue([
+      { id: "1", name: "Gigs", kind: "Folder", parent_id: null, seq: 1 },
+      { id: "2", name: "Techno Set", kind: "Playlist", parent_id: "1", seq: 1 },
+      { id: "3", name: "House Vibes", kind: "Playlist", parent_id: "1", seq: 2 },
+    ]);
+    render(<PlaylistPanel libraryPath="/db" />, { wrapper });
+    await screen.findByText("Techno Set");
+
+    fireEvent.change(screen.getByPlaceholderText("Filter playlists…"), {
+      target: { value: "house" },
+    });
+
+    // Folder hidden during filter; matching leaf shown.
+    expect(screen.queryByText("Gigs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Techno Set")).not.toBeInTheDocument();
+    expect(screen.getByText("House Vibes")).toBeInTheDocument();
+  });
 });
