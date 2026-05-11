@@ -1,10 +1,10 @@
 # Status
 
 ## Current phase
-Phase 1 — foundations & read-only library (target: v0.1.0)
+Phase 2 — agent chat (target: working Claude-powered library assistant)
 
 ## Current task
-Demo: open the app, see your library, click a track, hear it → tag v0.1.0.
+Demo: open the app, open agent panel, ask about the library, get streamed answers → tag v0.1.0.
 
 ## Recently completed
 - [x] Bootstrap: repo scaffold per §3 (session 1)
@@ -16,6 +16,7 @@ Demo: open the app, see your library, click a track, hear it → tag v0.1.0.
 - [x] Track detail panel: metadata grid, hot cues list (slot/timestamp/comment), waveform placeholder, row selection in table; 24 vitest tests (session 6)
 - [x] Audio preview: rodio AudioPlayer (dedicated OS thread), spacebar play/pause, play button in track panel; 41 vitest tests (session 7)
 - [x] Settings page: dark/light theme toggle (persisted + applied to `<html>`), library path reset, Anthropic API key via OS keychain; 55 vitest tests (session 8)
+- [x] Agent chat panel: streaming Claude API agentic loop, tool_use for library search/playlists/orphan scan, ChatPanel UI with message thread + inline tool call cards; 71 vitest tests (session 9)
 
 ## Phase 1 checklist
 - [x] Repo scaffold per §3
@@ -28,7 +29,8 @@ Demo: open the app, see your library, click a track, hear it → tag v0.1.0.
 - [x] Track detail panel: tags, cues, waveform
 - [x] Audio preview: spacebar to play/pause, scrub on waveform
 - [x] Settings: theme, library path, model API keys
-- [ ] **Demo:** open the app, see your library, click a track, hear it
+- [x] **Agent chat:** streaming agentic loop, library search / playlist / orphan-scan tools, ChatPanel UI
+- [ ] **Demo:** open the app, see your library, click a track, hear it; chat with the agent
 
 ## Blockers
 None.

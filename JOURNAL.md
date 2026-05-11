@@ -191,3 +191,32 @@
   - Note: `config.json` now merges fields (library_path + theme) instead of overwriting, so settings survive across sessions without clobbering each other.
 - Next: Phase 1 demo — build the app on macOS/Windows, open with a real Rekordbox library, click a track, hear it; tag v0.1.0.
 - Blockers: none.
+
+## Session 9 — 2026-05-11
+
+### Plan
+- Task: Phase 2 kick-off — agent chat panel with Claude API streaming + tool_use.
+- Goals:
+  1. New Rust IPC commands: `library_search(path, query, limit)`, `list_playlists(path)`, `health_orphan_scan(path)`.
+  2. Add `@anthropic-ai/sdk` npm package.
+  3. `src/agent/types.ts`: typed message/tool-call/tool-result types.
+  4. `src/agent/tools.ts`: tool schemas (for Claude's `tools` param) + handlers for library.search, library.get_track, library.list_playlists, health.orphan_scan.
+  5. `src/agent/useAgent.ts`: streaming agent loop — sends conversation to Claude, handles tool_use blocks (calls tool handler, sends tool_result), yields text and tool-call events to UI.
+  6. `src/components/ChatPanel.tsx`: collapsible right-side panel — message thread (renders text blocks and inline tool-result cards), text input + send button.
+  7. `src/App.tsx`: chat toggle button in header; ChatPanel rendered when open.
+  8. Tests; typecheck + lint green; commit + push.
+
+### End of session
+- Shipped:
+  - `apps/desktop/src-tauri/src/lib.rs`: added `library_search`, `list_playlists`, `health_orphan_scan` IPC commands; `health_orphan_scan` filters tracks where `folder_path` file does not exist on disk.
+  - `apps/desktop/package.json`: added `@anthropic-ai/sdk@^0.95.1` (direct API calls from WebView; CSP is null so outbound HTTPS is allowed).
+  - `src/agent/types.ts`: `TextBlock`, `ToolCallBlock`, `ToolResultBlock`, `ContentBlock`; `UserMessage`, `AssistantMessage`, `ToolResultMessage`, `ChatMessage`; `SearchResult`, `PlaylistsResult`, `OrphanResult`, `ToolPayload`.
+  - `src/agent/tools.ts`: `TOOL_SCHEMAS` array (3 tools: `library__search`, `library__list_playlists`, `health__orphan_scan`); `executeTool(name, input, libraryPath)` dispatcher.
+  - `src/agent/useAgent.ts`: full streaming agentic loop — fetches API key from OS keychain, creates Anthropic client, streams text deltas into React state via `client.messages.stream()`, accumulates tool_use input JSON, executes tools via IPC, loops until `stop_reason !== "tool_use"`; returns `{ messages, isStreaming, error, sendMessage, clearMessages }`.
+  - `src/components/ChatPanel.tsx`: fixed-width (w-80) right panel — user messages as right-aligned indigo bubbles; assistant messages as left-aligned text blocks + `ToolCallCard` chips; tool_results hidden; streaming spinner in send button; auto-resizing textarea; clear + close buttons.
+  - `src/test/setup.ts`: added `Element.prototype.scrollIntoView = () => {}` (jsdom stub).
+  - `src/App.tsx`: imported `ChatPanel`; chat toggle button (speech-bubble icon, turns indigo when active); `showChat` state; renders `<ChatPanel>` as rightmost panel.
+  - `src/components/ChatPanel.test.tsx`: 16 vitest tests.
+  - 71 vitest tests pass; `pnpm typecheck` + `pnpm lint` clean; `cargo fmt --all` applied.
+- Next: Phase 1 demo — build on macOS, open with real library, verify audio preview + agent chat; tag v0.1.0.
+- Blockers: none.

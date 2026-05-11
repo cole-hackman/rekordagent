@@ -81,6 +81,56 @@ async fn set_library_path(app: tauri::AppHandle, path: String) -> Result<(), Str
     write_config(&app, &config)
 }
 
+#[tauri::command]
+async fn library_search(
+    path: String,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let mut results = db.search_tracks(&query).map_err(|e| e.to_string())?;
+        if let Some(n) = limit {
+            results.truncate(n);
+        }
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_playlists(path: String) -> Result<Vec<decks_core::rekordbox_db::Playlist>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.playlists().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn health_orphan_scan(path: String) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+        Ok(tracks
+            .into_iter()
+            .filter(|t| {
+                t.folder_path
+                    .as_deref()
+                    .map(|p| !Path::new(p).exists())
+                    .unwrap_or(false)
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ── Settings commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -181,6 +231,9 @@ pub fn run() {
             get_track_cues,
             get_library_path,
             set_library_path,
+            library_search,
+            list_playlists,
+            health_orphan_scan,
             get_theme,
             set_theme,
             get_api_key,
