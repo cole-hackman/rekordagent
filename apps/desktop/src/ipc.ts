@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Track, HotCue } from "./types";
+import type { Track, HotCue, Playlist } from "./types";
 
 export async function pickLibraryPath(): Promise<string | null> {
   const result = await open({
@@ -81,5 +81,23 @@ export async function setApiKey(service: string, key: string): Promise<void> {
 
 export async function deleteApiKey(service: string): Promise<void> {
   return invoke<void>("delete_api_key", { service });
+}
+
+// ── Agent tools ───────────────────────────────────────────────────────────────
+
+export async function librarySearch(
+  path: string,
+  query: string,
+  limit?: number,
+): Promise<Track[]> {
+  return invoke<Track[]>("library_search", { path, query, limit });
+}
+
+export async function listPlaylists(path: string): Promise<Playlist[]> {
+  return invoke<Playlist[]>("list_playlists", { path });
+}
+
+export async function healthOrphanScan(path: string): Promise<Track[]> {
+  return invoke<Track[]>("health_orphan_scan", { path });
 }
 

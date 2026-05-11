@@ -16,6 +16,15 @@ export interface HotCue {
   comment: string | null;
 }
 
+/** Mirrors `rekordbox_db::types::Playlist`. */
+export interface Playlist {
+  id: number;
+  name: string;
+  kind: "Playlist" | "Folder" | "SmartPlaylist";
+  parent_id: number | null;
+  seq: number;
+}
+
 /** Mirrors `rekordbox_db::types::Track` (serde snake_case). */
 export interface Track {
   id: number;
