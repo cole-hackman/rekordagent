@@ -411,112 +411,15 @@ async fn export_accepted_changes(
             .map_err(|e| e.to_string())?;
         let tracks = db.tracks().map_err(|e| e.to_string())?;
         let playlists = db.playlists().map_err(|e| e.to_string())?;
-        let mut track_id_map = HashMap::new();
-        let mut xml_tracks = tracks
-            .iter()
-            .enumerate()
-            .map(|(idx, track)| {
-                let xml_id = track.id.parse::<u32>().unwrap_or((idx + 1) as u32);
-                track_id_map.insert(track.id.clone(), xml_id);
-                db_track_to_xml_track(track, xml_id)
-            })
-            .collect::<Vec<_>>();
-
-        for change in &accepted {
-            apply_xml_overlay(&mut xml_tracks, &track_id_map, change)?;
+        let mut playlist_entries_map = HashMap::new();
+        for playlist in &playlists {
+            playlist_entries_map.insert(
+                playlist.id.clone(),
+                db.playlist_entries(&playlist.id)
+                    .map_err(|e| e.to_string())?,
+            );
         }
-
-        let mut playlist_tracks: HashMap<String, Vec<u32>> = HashMap::new();
-        let mut playlist_names: HashMap<String, String> = HashMap::new();
-        let mut playlist_order: Vec<String> = Vec::new();
-        let mut deleted_playlists = std::collections::HashSet::new();
-
-        // 1. Initialize from DB
-        for playlist in playlists.iter().filter(|playlist| {
-            matches!(
-                playlist.kind,
-                decks_core::rekordbox_db::PlaylistKind::Playlist
-            )
-        }) {
-            let entries = db
-                .playlist_entries(&playlist.id)
-                .map_err(|e| e.to_string())?;
-            let track_ids = entries
-                .iter()
-                .filter_map(|entry| track_id_map.get(&entry.content_id).copied())
-                .collect::<Vec<_>>();
-            playlist_tracks.insert(playlist.id.clone(), track_ids);
-            playlist_names.insert(playlist.id.clone(), playlist.name.clone());
-            playlist_order.push(playlist.id.clone());
-        }
-
-        // 2. Apply mutations
-        for change in &accepted {
-            let Some(target_id) = change.target_id.as_deref() else { continue; };
-            match change.kind {
-                changes::ChangeKind::PlaylistRename => {
-                    if let Some(name) = change.new_value.as_ref().and_then(json_to_string) {
-                        playlist_names.insert(target_id.to_owned(), name);
-                    }
-                }
-                changes::ChangeKind::PlaylistDelete => {
-                    deleted_playlists.insert(target_id.to_owned());
-                }
-                changes::ChangeKind::PlaylistCreate => {
-                    if let Some(name) = change.new_value.as_ref().and_then(json_to_string) {
-                        playlist_names.insert(target_id.to_owned(), name);
-                        playlist_tracks.insert(target_id.to_owned(), Vec::new());
-                        playlist_order.push(target_id.to_owned());
-                    }
-                }
-                changes::ChangeKind::PlaylistAddTrack => {
-                    if let Some(track_id) = change.new_value.as_ref().and_then(json_to_string) {
-                        if let Some(xml_track_id) = track_id_map.get(&track_id) {
-                            if let Some(tracks) = playlist_tracks.get_mut(target_id) {
-                                tracks.push(*xml_track_id);
-                            }
-                        }
-                    }
-                }
-                changes::ChangeKind::PlaylistRemoveTrack => {
-                    if let Some(track_id) = change.old_value.as_ref().and_then(json_to_string) {
-                        if let Some(xml_track_id) = track_id_map.get(&track_id) {
-                            if let Some(tracks) = playlist_tracks.get_mut(target_id) {
-                                tracks.retain(|&id| id != *xml_track_id);
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let mut playlist_nodes = Vec::new();
-        for playlist_id in playlist_order {
-            if deleted_playlists.contains(&playlist_id) {
-                continue;
-            }
-            if let Some(name) = playlist_names.get(&playlist_id) {
-                if let Some(track_ids) = playlist_tracks.get(&playlist_id) {
-                    playlist_nodes.push(decks_core::rekordbox_xml::Node::Playlist {
-                        name: name.clone(),
-                        key_type: 0,
-                        track_ids: track_ids.clone(),
-                    });
-                }
-            }
-        }
-
-        let collection = decks_core::rekordbox_xml::Collection {
-            product: decks_core::rekordbox_xml::Product::default(),
-            tracks: xml_tracks,
-            playlists: vec![decks_core::rekordbox_xml::Node::Folder {
-                name: "ROOT".to_owned(),
-                children: playlist_nodes,
-            }],
-        };
-        let xml = decks_core::rekordbox_xml::to_xml(&collection).map_err(|e| e.to_string())?;
-        decks_core::rekordbox_xml::parse(&xml).map_err(|e| e.to_string())?;
+        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted)?;
         std::fs::write(&output_path, xml).map_err(|e| e.to_string())?;
 
         let mut exported_count = 0;
@@ -568,7 +471,10 @@ pub fn generate_export_xml(
             decks_core::rekordbox_db::PlaylistKind::Playlist
         )
     }) {
-        let entries = playlist_entries_map.get(&playlist.id).cloned().unwrap_or_default();
+        let entries = playlist_entries_map
+            .get(&playlist.id)
+            .cloned()
+            .unwrap_or_default();
         let track_ids = entries
             .iter()
             .filter_map(|entry| track_id_map.get(&entry.content_id).copied())
@@ -580,7 +486,9 @@ pub fn generate_export_xml(
 
     // 2. Apply mutations
     for change in accepted {
-        let Some(target_id) = change.target_id.as_deref() else { continue; };
+        let Some(target_id) = change.target_id.as_deref() else {
+            continue;
+        };
         match change.kind {
             changes::ChangeKind::PlaylistRename => {
                 if let Some(name) = change.new_value.as_ref().and_then(json_to_string) {
@@ -963,12 +871,15 @@ mod tests {
 
         let parsed = decks_core::rekordbox_xml::parse(&xml).expect("should parse back");
         let root = &parsed.playlists[0];
-        
+
         let mut pl_names = Vec::new();
         let mut pl_tracks = Vec::new();
         if let decks_core::rekordbox_xml::Node::Folder { children, .. } = root {
             for child in children {
-                if let decks_core::rekordbox_xml::Node::Playlist { name, track_ids, .. } = child {
+                if let decks_core::rekordbox_xml::Node::Playlist {
+                    name, track_ids, ..
+                } = child
+                {
                     pl_names.push(name.clone());
                     pl_tracks.push(track_ids.clone());
                 }
@@ -977,7 +888,7 @@ mod tests {
 
         assert_eq!(pl_names, vec!["Renamed Playlist", "New Playlist"]);
         // Track IDs are assigned sequentially if they aren't numbers. track1 -> 1, track2 -> 2.
-        assert_eq!(pl_tracks[0], vec![1, 2]); 
+        assert_eq!(pl_tracks[0], vec![1, 2]);
         assert_eq!(pl_tracks[1], vec![1]);
     }
 }

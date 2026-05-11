@@ -6,7 +6,7 @@
 
 - Real Rekordbox 7 `master.db` for local validation.
 - Disposable Rekordbox library for XML import validation.
-- Synthetic fixture library for automated/E2E tests once `scripts/seed-test-library.sh` is implemented.
+- Synthetic fixture library generated with `./scripts/seed-test-library.sh`.
 
 ## v0.1.0 Foundation Checklist
 

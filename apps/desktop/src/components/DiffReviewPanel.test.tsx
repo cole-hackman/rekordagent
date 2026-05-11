@@ -98,4 +98,46 @@ describe("DiffReviewPanel", () => {
     await waitFor(() => expect(listChanges).toHaveBeenCalledWith("/db"));
     expect(await screen.findByText("No proposed changes")).toBeInTheDocument();
   });
+
+  it("groups changes by target and filters by status", async () => {
+    vi.mocked(listChanges).mockResolvedValue([
+      {
+        id: "change-1",
+        library_path: "/db",
+        kind: "TrackMetadataEdit",
+        target_id: "track-1",
+        field: "genre",
+        old_value: "House",
+        new_value: "Deep House",
+        reason: null,
+        confidence: null,
+        status: "Proposed",
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: "change-2",
+        library_path: "/db",
+        kind: "TrackMetadataEdit",
+        target_id: "track-2",
+        field: "artist",
+        old_value: "Unknown",
+        new_value: "DJ Two",
+        reason: null,
+        confidence: null,
+        status: "Accepted",
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+
+    renderPanel();
+
+    expect(await screen.findByText("Target: track-1")).toBeInTheDocument();
+    expect(screen.queryByText("Target: track-2")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Accepted: 1" }));
+    expect(await screen.findByText("Target: track-2")).toBeInTheDocument();
+    expect(screen.queryByText("Target: track-1")).toBeNull();
+  });
 });

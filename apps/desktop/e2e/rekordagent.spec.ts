@@ -151,5 +151,5 @@ test("chat exposes the audit workflow", async ({ page }) => {
   await page.getByRole("button", { name: "Browse…" }).click();
   await page.getByRole("button", { name: "Open library" }).click();
   await page.getByRole("button", { name: "Open agent" }).click();
-  await expect(page.getByRole("button", { name: "Audit library" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Library Audit" })).toBeVisible();
 });

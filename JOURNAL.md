@@ -297,3 +297,26 @@
   - `pnpm lint` passed.
   - `cargo test --workspace` passed.
 - Next: manual verification against a real library and final `git tag v0.1.0` creation.
+
+### Checkpoint — Fixture and export hardening
+- Shipped:
+  - Replaced the stubbed `scripts/seed-test-library.sh` with a working generator for `fixtures/tiny-library/master.db`.
+  - Added `crates/rekordbox-db/examples/seed_test_library.rs` to create a SQLCipher fixture using the repo schema/seed SQL and validate it through `RekordboxDb::open`.
+  - Ignored generated fixture DB/audio artifacts so the repo tracks the generator instead of binary output.
+  - Refactored `export_accepted_changes` to reuse the pure `generate_export_xml` path used by backend tests.
+  - Added frontend coverage for grouped diff status filtering and playlist-track selection into the inspector.
+- Verification:
+  - `./scripts/seed-test-library.sh` generated `fixtures/tiny-library/master.db`.
+  - `cargo test -p rekordbox-db --example seed_test_library` passed.
+  - `cargo test -p decks-desktop generate_export_xml -- --nocapture` passed.
+  - `pnpm --filter desktop test src/components/PlaylistPanel.test.tsx src/components/DiffReviewPanel.test.tsx` passed.
+  - `pnpm typecheck` passed.
+- Verification update:
+  - `cargo test --workspace` passed.
+  - `pnpm test` passed: 90 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+  - `pnpm build` passed.
+  - `pnpm e2e` passed: 4 Playwright tests.
+- Remaining:
+  - Manual real-library and packaged-app verification before tagging.

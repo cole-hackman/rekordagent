@@ -31,3 +31,7 @@ Thumbs.db
 
 # Build artifacts
 *.log
+
+# Generated synthetic fixtures
+fixtures/tiny-library/master.db
+fixtures/tiny-library/music/

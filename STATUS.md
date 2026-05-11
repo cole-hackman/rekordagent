@@ -8,7 +8,7 @@ Manual real-library verification remains the main release blocker. `master.db` w
 
 ## Verification baseline
 - `cargo test --workspace`: passing as of 2026-05-11
-- `pnpm test`: passing as of 2026-05-11 (85 tests)
+- `pnpm test`: passing as of 2026-05-11 (90 tests)
 - `pnpm typecheck`: passing as of 2026-05-11
 - `pnpm lint`: passing as of 2026-05-11
 - `pnpm build`: passing as of 2026-05-11
@@ -37,6 +37,7 @@ Manual real-library verification remains the main release blocker. `master.db` w
 - [x] macOS release build artifacts generated.
 - [x] Final UI audit and redesign recommendations documented.
 - [x] Implemented phase 11 UI polish (empty states, panel layout, zero values, placeholder waveform).
+- [x] Deterministic synthetic fixture generator: `scripts/seed-test-library.sh`.
 
 ## MVP phase checklist
 - [x] Phase 0 — Repo familiarization and status reconciliation.

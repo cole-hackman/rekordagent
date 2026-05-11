@@ -105,7 +105,7 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 ## Phase 9 — Playwright E2E
 
 - [x] Add Playwright config and scripts.
-- [ ] Replace `scripts/seed-test-library.sh` with deterministic fixture generation; current E2E uses mocked Tauri IPC fixtures.
+- [x] Replace `scripts/seed-test-library.sh` with deterministic SQLCipher fixture generation; current E2E still uses mocked Tauri IPC fixtures for speed and model independence.
 - [x] Cover first-run fixture load, track selection, playlist view, chat audit entry point, diff accept/reject, and XML export.
 - [x] Keep E2E model-independent by mocking app-side data responses.
 

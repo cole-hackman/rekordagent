@@ -68,4 +68,15 @@ describe("PlaylistPanel", () => {
     fireEvent.click(await screen.findByText("House Vibes"));
     expect(getPlaylist).toHaveBeenCalledWith("/db", "3");
   });
+
+  it("selects a track from the playlist detail", async () => {
+    const onSelectTrack = vi.fn();
+    render(<PlaylistPanel libraryPath="/db" onSelectTrack={onSelectTrack} />, {
+      wrapper,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /Dark Matter/ }));
+    expect(onSelectTrack).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "1", title: "Dark Matter" }),
+    );
+  });
 });

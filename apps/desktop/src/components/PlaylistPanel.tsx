@@ -13,7 +13,11 @@ function kindLabel(kind: Playlist["kind"]): string {
   return "Unknown";
 }
 
-export function PlaylistPanel({ libraryPath, selectedTrackId, onSelectTrack }: Props) {
+export function PlaylistPanel({
+  libraryPath,
+  selectedTrackId,
+  onSelectTrack,
+}: Props) {
   const [filter, setFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data: playlists = [], isLoading, error } = usePlaylists(libraryPath);
@@ -124,10 +128,11 @@ export function PlaylistPanel({ libraryPath, selectedTrackId, onSelectTrack }: P
               </p>
             </div>
             {detail.tracks.map((track, index) => (
-              <div
+              <button
                 key={`${track.id}-${index}`}
+                type="button"
                 onClick={() => onSelectTrack?.(track)}
-                className={`grid cursor-pointer grid-cols-[3rem_minmax(0,1fr)_9rem_4rem_4rem] gap-3 border-b border-zinc-800/60 px-4 py-2 text-sm transition-colors ${
+                className={`grid w-full cursor-pointer grid-cols-[3rem_minmax(0,1fr)_9rem_4rem_4rem] gap-3 border-b border-zinc-800/60 px-4 py-2 text-left text-sm transition-colors ${
                   track.id === selectedTrackId
                     ? "bg-indigo-900/40 hover:bg-indigo-900/50"
                     : "hover:bg-zinc-800/60"
@@ -143,12 +148,14 @@ export function PlaylistPanel({ libraryPath, selectedTrackId, onSelectTrack }: P
                 <span className="text-right tabular-nums text-zinc-400">
                   {track.bpm != null && track.bpm > 0 ? track.bpm.toFixed(1) : "—"}
                 </span>
-                <span className="text-center text-zinc-400">{track.musical_key ?? "—"}</span>
-              </div>
+                <span className="text-center text-zinc-400">
+                  {track.musical_key ?? "—"}
+                </span>
+              </button>
             ))}
-            </div>
-            )}
-            </div>
-            </div>
-            );
-            }
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
