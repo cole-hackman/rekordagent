@@ -1,4 +1,5 @@
 mod audio;
+mod claude_agent;
 
 use std::path::Path;
 use tauri::Manager;
@@ -219,6 +220,34 @@ async fn get_playback_state(
     Ok(player.playback_state())
 }
 
+// ── Claude CLI agent ──────────────────────────────────────────────────────────
+
+/// Check whether the `claude` binary is on PATH.
+#[tauri::command]
+async fn claude_available() -> bool {
+    tokio::process::Command::new("claude")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Send a message to the claude CLI and stream the response back via a
+/// per-request Tauri event named `event_name`.  Returns the session_id for
+/// conversation continuity.
+#[tauri::command]
+async fn chat_with_claude(
+    app: tauri::AppHandle,
+    message: String,
+    session_id: Option<String>,
+    event_name: String,
+) -> Result<String, String> {
+    claude_agent::chat(app, message, session_id, event_name).await
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 pub fn run() {
@@ -244,6 +273,8 @@ pub fn run() {
             resume_audio,
             stop_audio,
             get_playback_state,
+            claude_available,
+            chat_with_claude,
         ])
         .run(tauri::generate_context!())
         .expect("error while running decks");

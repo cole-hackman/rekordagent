@@ -9,6 +9,7 @@ vi.mock("../ipc", () => ({
   pickLibraryPath: vi.fn().mockResolvedValue(null),
   validateLibraryPath: vi.fn().mockResolvedValue(42),
   setLibraryPath: vi.fn().mockResolvedValue(undefined),
+  claudeAvailable: vi.fn().mockResolvedValue(false),
 }));
 
 import {

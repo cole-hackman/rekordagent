@@ -7,6 +7,7 @@ import {
   getApiKey,
   setApiKey,
   deleteApiKey,
+  claudeAvailable,
 } from "../ipc";
 import { useAppStore } from "../store/appStore";
 
@@ -20,6 +21,7 @@ export function SettingsPanel({ onClose }: Props) {
   const [libraryChanging, setLibraryChanging] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
 
+  const [claudeCli, setClaudeCli] = useState<boolean | null>(null);
   const [anthropicKey, setAnthropicKey] = useState("");
   const [keyLoaded, setKeyLoaded] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -27,6 +29,9 @@ export function SettingsPanel({ onClose }: Props) {
   const [keySaved, setKeySaved] = useState(false);
 
   useEffect(() => {
+    claudeAvailable()
+      .then(setClaudeCli)
+      .catch(() => setClaudeCli(false));
     getApiKey("anthropic_api_key")
       .then((key) => {
         if (key) setAnthropicKey(key);
@@ -156,11 +161,38 @@ export function SettingsPanel({ onClose }: Props) {
           </button>
         </section>
 
-        {/* API Keys */}
+        {/* Claude / API Keys */}
         <section className="px-5 py-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            API Keys
+            Claude Agent
           </h3>
+
+          {/* Auth status badge */}
+          <div className="mb-4 flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs">
+            {claudeCli === null ? (
+              <div className="h-2 w-2 rounded-full bg-zinc-600" />
+            ) : claudeCli ? (
+              <div className="h-2 w-2 rounded-full bg-emerald-500" />
+            ) : (
+              <div className="h-2 w-2 rounded-full bg-zinc-500" />
+            )}
+            <span className="text-zinc-300">
+              {claudeCli === null
+                ? "Checking…"
+                : claudeCli
+                  ? "Claude subscription active"
+                  : "No Claude CLI found"}
+            </span>
+          </div>
+
+          {/* Only show API key form when claude CLI is not available */}
+          {!claudeCli && (
+          <div>
+          <p className="mb-3 text-xs text-zinc-500">
+            Install the{" "}
+            <span className="text-zinc-300">claude CLI</span> for subscription-based access,
+            or enter an Anthropic API key below.
+          </p>
           {!keyLoaded ? (
             <div className="flex justify-center py-3">
               <div className="h-4 w-4 animate-spin rounded-full border border-zinc-600 border-t-indigo-400" />
@@ -216,6 +248,8 @@ export function SettingsPanel({ onClose }: Props) {
                 )}
               </div>
             </div>
+          )}
+          </div>
           )}
         </section>
       </div>
