@@ -46,6 +46,14 @@ describe("ChatPanel", () => {
     expect(screen.getByText("Ask about your library…")).toBeTruthy();
   });
 
+  it("starts the guided audit workflow", () => {
+    render(<ChatPanel {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "Audit library" }));
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Audit missing or bad metadata"),
+    );
+  });
+
   it("renders header title", () => {
     render(<ChatPanel {...defaultProps} />);
     expect(screen.getByText("Agent")).toBeTruthy();

@@ -251,6 +251,19 @@ Expand an existing track pool with similar tracks.
 
 ## Staging tools
 
+The agent can propose and list staged changes. Accept/reject/export actions are user-driven through UI/IPC, not autonomous agent tools.
+
+### `staging.stage_change`
+Propose a change for user review. Does not apply anything to Rekordbox.
+
+| Field | Value |
+|-------|-------|
+| Parameters | `kind: ChangeKind`, `target_id?: string`, `field?: string`, `old_value?: unknown`, `new_value?: unknown`, `reason?: string`, `confidence?: number` |
+| Returns | `Change` |
+| Idempotent | no |
+| Side effects | writes proposed change to cache DB only |
+| Cost | free |
+
 ### `staging.list_changes`
 List all staged changes.
 
@@ -263,23 +276,23 @@ List all staged changes.
 | Cost | free |
 
 ### `staging.accept_change`
-Accept a staged change (marks it ready for export).
+Accept a staged change (marks it ready for export). UI/IPC only.
 
 | Field | Value |
 |-------|-------|
 | Parameters | `change_id: string` |
-| Returns | `void` |
+| Returns | `Change` |
 | Idempotent | yes |
 | Side effects | mutates change state |
 | Cost | free |
 
 ### `staging.reject_change`
-Reject and discard a staged change.
+Reject a staged change. UI/IPC only.
 
 | Field | Value |
 |-------|-------|
 | Parameters | `change_id: string` |
-| Returns | `void` |
+| Returns | `Change` |
 | Idempotent | yes |
 | Side effects | mutates change state |
 | Cost | free |

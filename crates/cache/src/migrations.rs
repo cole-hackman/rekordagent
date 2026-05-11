@@ -43,6 +43,28 @@ pub const MIGRATIONS: &[(u32, &str)] = &[
             ON conversations(library_path, updated_at DESC);
         ",
     ),
+    (
+        3,
+        "
+        CREATE TABLE IF NOT EXISTS staged_changes (
+            id           TEXT PRIMARY KEY,
+            library_path TEXT,
+            kind         TEXT NOT NULL,
+            target_id    TEXT,
+            field        TEXT,
+            old_value    TEXT,
+            new_value    TEXT,
+            reason       TEXT,
+            confidence   REAL,
+            status       TEXT NOT NULL,
+            created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_staged_changes_library_status
+            ON staged_changes(library_path, status, updated_at DESC);
+        ",
+    ),
 ];
 
 pub fn current_version(conn: &rusqlite::Connection) -> anyhow::Result<u32> {
@@ -126,6 +148,23 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM conversation_messages", [], |r| {
                 r.get(0)
             })
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn staged_changes_table_exists_after_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        run(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO staged_changes
+                (id, library_path, kind, target_id, field, old_value, new_value, status)
+             VALUES
+                ('ch1', '/db', 'TrackMetadataEdit', 't1', 'genre', '\"House\"', '\"Deep House\"', 'Proposed');",
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM staged_changes", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
     }

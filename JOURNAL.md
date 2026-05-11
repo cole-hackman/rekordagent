@@ -259,3 +259,29 @@
   - `pnpm typecheck` passed.
   - `pnpm lint` passed.
 - Next: implement safe staged changes and diff review.
+
+### Checkpoint — MVP staged changes, export, E2E, and build
+- Shipped:
+  - Implemented `crates/changes` staged-change lifecycle with statuses `Proposed`, `Accepted`, `Rejected`, and `Exported`.
+  - Added cache schema v3 and cache CRUD/batch APIs for persisted staged changes.
+  - Added Tauri IPC for stage/list/accept/reject/batch review and XML export.
+  - Added agent tools for proposing and listing staged changes without applying them.
+  - Added `DiffReviewPanel` with status counts, old/new values, reason, confidence, accept/reject, safe batch accept, reject proposed, and XML export.
+  - Added an “Audit library” chat workflow entry point that tells the agent to scan, summarize, and stage only safe proposals.
+  - Added Playwright E2E setup and tests for first-run fixture load, track selection, playlist view, audit entry point, diff accept/reject, and XML export.
+  - Completed UI audit/redesign notes and documented local macOS build artifacts.
+- Verification:
+  - `cargo test --workspace` passed.
+  - `pnpm test` passed: 85 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+  - `pnpm build` passed, with Vite warnings from browser-bundling Anthropic SDK credential modules.
+  - `pnpm e2e` passed: 4 Playwright tests.
+  - `pnpm --filter desktop tauri build` passed.
+- Build artifacts:
+  - `target/release/bundle/macos/decks.app`
+  - `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg`
+- Remaining:
+  - Manual packaged-app verification against a real Rekordbox library.
+  - Disposable-library Rekordbox XML import verification.
+  - Deeper grouped diff UX and playlist mutation export tests.

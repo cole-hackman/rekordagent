@@ -24,6 +24,7 @@ rodio = { version = "0.19", features = ["symphonia-all"] }
 keyring = "2"
 decks-core = { path = "../../../crates/decks-core" }
 cache = { path = "../../../crates/cache" }
+changes = { path = "../../../crates/changes" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

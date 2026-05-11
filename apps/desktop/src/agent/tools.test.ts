@@ -6,6 +6,8 @@ import {
   getTrackCues,
   healthDuplicateScan,
   healthBrokenLinkScan,
+  stageChange,
+  listChanges,
 } from "../ipc";
 
 vi.mock("../ipc", () => ({
@@ -17,6 +19,8 @@ vi.mock("../ipc", () => ({
   getTrackCues: vi.fn(),
   healthDuplicateScan: vi.fn(),
   healthBrokenLinkScan: vi.fn(),
+  stageChange: vi.fn(),
+  listChanges: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -34,6 +38,8 @@ describe("agent tools", () => {
       "library__list_cues",
       "library__list_playlists",
       "library__search",
+      "staging__list_changes",
+      "staging__stage_change",
     ]);
   });
 
@@ -74,5 +80,55 @@ describe("agent tools", () => {
     expect((await executeTool("health__broken_link_scan", {}, "/db")).tool).toBe(
       "health.broken_link_scan",
     );
+  });
+
+  it("dispatches staged change proposals without applying them", async () => {
+    vi.mocked(stageChange).mockResolvedValue({
+      id: "change-1",
+      library_path: "/db",
+      kind: "TrackMetadataEdit",
+      target_id: "1",
+      field: "genre",
+      old_value: "House",
+      new_value: "Deep House",
+      reason: "Normalize genre",
+      confidence: 0.9,
+      status: "Proposed",
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    const result = await executeTool(
+      "staging__stage_change",
+      {
+        kind: "TrackMetadataEdit",
+        target_id: "1",
+        field: "genre",
+        old_value: "House",
+        new_value: "Deep House",
+        reason: "Normalize genre",
+        confidence: 0.9,
+      },
+      "/db",
+    );
+
+    expect(stageChange).toHaveBeenCalledWith({
+      library_path: "/db",
+      kind: "TrackMetadataEdit",
+      target_id: "1",
+      field: "genre",
+      old_value: "House",
+      new_value: "Deep House",
+      reason: "Normalize genre",
+      confidence: 0.9,
+    });
+    expect(result.tool).toBe("staging.stage_change");
+  });
+
+  it("lists staged changes for the active library", async () => {
+    vi.mocked(listChanges).mockResolvedValue([]);
+    const result = await executeTool("staging__list_changes", {}, "/db");
+    expect(listChanges).toHaveBeenCalledWith("/db");
+    expect(result.tool).toBe("staging.list_changes");
   });
 });

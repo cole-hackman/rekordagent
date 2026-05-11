@@ -7,6 +7,38 @@ import type {
   BrokenMetadataReport,
 } from "../types";
 
+export type ChangeStatus = "Proposed" | "Accepted" | "Rejected" | "Exported";
+
+export type ChangeKind =
+  | "TrackMetadataEdit"
+  | "CueMetadataEdit"
+  | "PlaylistCreate"
+  | "PlaylistRename"
+  | "PlaylistDelete"
+  | "PlaylistAddTrack"
+  | "PlaylistRemoveTrack"
+  | "PlaylistReorderTrack";
+
+export interface StagedChange {
+  id: string;
+  library_path: string | null;
+  kind: ChangeKind;
+  target_id: string | null;
+  field: string | null;
+  old_value: unknown | null;
+  new_value: unknown | null;
+  reason: string | null;
+  confidence: number | null;
+  status: ChangeStatus;
+  created_at: number;
+  updated_at: number;
+}
+
+export type NewStagedChange = Omit<
+  StagedChange,
+  "id" | "status" | "created_at" | "updated_at"
+>;
+
 // ── Conversation message types ────────────────────────────────────────────────
 
 export interface TextBlock {
@@ -114,6 +146,16 @@ export interface BrokenLinkResult {
   report: BrokenMetadataReport;
 }
 
+export interface StageChangeResult {
+  tool: "staging.stage_change";
+  change: StagedChange;
+}
+
+export interface ListChangesResult {
+  tool: "staging.list_changes";
+  changes: StagedChange[];
+}
+
 export type ToolPayload =
   | SearchResult
   | TrackResult
@@ -122,4 +164,6 @@ export type ToolPayload =
   | CuesResult
   | OrphanResult
   | DuplicateResult
-  | BrokenLinkResult;
+  | BrokenLinkResult
+  | StageChangeResult
+  | ListChangesResult;

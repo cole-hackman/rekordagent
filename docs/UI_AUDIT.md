@@ -1,42 +1,45 @@
 # UI Audit and Redesign Notes
 
-> This document starts as audit scaffolding and should be completed after the MVP workflow exists.
+> Completed after the first MVP workflow was implemented. This is a redesign roadmap, not a release blocker.
 
 ## Current Navigation Problems
 
-- The app currently relies on a top header plus panels; there is no durable left navigation model for Library, Playlists, Changes, or Workflows.
+- The app currently relies on a top header plus optional panels; there is no durable left navigation model for Library, Playlists, Changes, or Workflows.
 - Chat, settings, and track detail compete for right-side space.
-- Playlist browsing has no dedicated home yet.
+- Playlist browsing exists, but it is a collapsible band above the table instead of a durable primary view.
+- Changes are accessed by a header toggle, which makes review/export feel secondary even though it is central to MVP.
 
 ## Visual Hierarchy Problems
 
 - Primary user tasks are not visually separated: browse library, inspect track, ask agent, review changes.
-- Tool call cards show that a tool ran but do not yet make results easy to scan.
+- Tool call cards and result summaries are present, but complex scan results need richer tables and drill-downs.
 - Current styling is functional but generic and lacks strong desktop-app hierarchy.
 
 ## Track Table Usability
 
 - Virtualized table, filtering, sorting, and selection work.
-- Missing useful columns/toggles for playlist context, path health, metadata completeness, and selected workflow state.
+- Missing useful columns/toggles for playlist context, path health, metadata completeness, and staged workflow state.
 - Empty/error states are minimal.
 
 ## Playlist Browsing UX
 
-- Dedicated playlist list/search/detail views are missing.
+- Basic playlist list/search/detail exists.
 - Playlist issue indicators are missing.
-- Agent playlist answers are limited by missing `get_playlist` tool.
+- Playlist track rows should support inspect, find in library, and issue badges.
+- Folder hierarchy is flattened; nested folders should become a real tree.
 
 ## Chat / Agent UX
 
 - Chat streams text and shows tool call chips.
-- Tool results are currently hidden from the user instead of summarized.
-- Conversation history is not persisted.
-- No workflow launcher or clear “what changed” bridge into diff review yet.
+- Tool results are summarized, but not inspectable enough for larger scans.
+- Conversation history is persisted with a minimal selector.
+- The audit workflow launcher exists, but should be promoted into a workflow surface with progress, reviewed changes, and export status.
 
 ## Diff Review UX
 
-- Missing.
-- MVP needs a dedicated review surface with status counts, grouping, old/new values, reasons, confidence, and accept/reject controls.
+- Diff review exists as a right-side panel with status counts, old/new values, reasons, confidence, accept/reject, safe batch accept, reject proposed, and XML export.
+- It is still a flat list. The next pass should group by track/playlist and support filtering by status/kind.
+- Export success is shown inline; a toast/status system would make it easier to notice.
 
 ## Settings UX
 
@@ -59,8 +62,8 @@
 
 ## Desktop App Polish
 
-- The current app feels like a web dashboard in a shell.
-- MVP redesign should move toward denser, native-feeling navigation, consistent panel sizing, and clearer command/status feedback.
+- The current app still feels like a web dashboard in a shell.
+- MVP redesign should move toward denser native-feeling navigation, consistent panel sizing, clearer command/status feedback, and more predictable inspector behavior.
 
 ## Suggested Information Architecture
 
@@ -83,11 +86,11 @@
 
 ## Prioritized Redesign Tasks
 
-1. Add left sidebar and dedicated Playlist view.
-2. Render useful chat tool results.
-3. Add diff review drawer/panel.
-4. Add status/toast system.
-5. Improve empty/error/loading states.
-6. Tighten typography, spacing, and density.
-7. Add keyboard navigation for track and playlist browsing.
-8. Review accessibility and focus management.
+1. Add left sidebar with Library, Playlists, Changes, Audit, and Settings destinations.
+2. Promote Playlists to a dedicated view with folder tree, track table, and issue badges.
+3. Redesign the change review panel around grouped diffs, filters, and export status.
+4. Add a toast/status system for save, export, keychain, audio, and agent errors.
+5. Improve empty/error/loading states with clear actions and copyable technical details.
+6. Tighten typography, spacing, and density so table, inspector, chat, and review surfaces feel like one app.
+7. Add keyboard navigation for track, playlist, chat, and diff review flows.
+8. Review accessibility, focus management, and color contrast across all panels.

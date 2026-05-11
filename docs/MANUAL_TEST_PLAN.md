@@ -54,6 +54,15 @@ Known `v0.1.0` limitations:
 - [ ] Rejected changes are not exported.
 - [ ] `master.db` remains unmodified.
 
+## macOS Build Artifacts
+
+Latest local build completed on 2026-05-11:
+
+- App bundle: `target/release/bundle/macos/decks.app`
+- DMG: `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg`
+
+Signing/notarization has not been configured. Treat the DMG as a local unsigned test artifact until release signing is added.
+
 ## Verification Commands
 
 ```sh
@@ -62,10 +71,6 @@ pnpm test
 pnpm typecheck
 pnpm lint
 pnpm build
-```
-
-When Playwright is added:
-
-```sh
 pnpm e2e
+pnpm --filter desktop tauri build
 ```

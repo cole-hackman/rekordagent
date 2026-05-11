@@ -8,8 +8,21 @@ import {
   getTrackCues,
   healthDuplicateScan,
   healthBrokenLinkScan,
+  stageChange,
+  listChanges,
 } from "../ipc";
-import type { ToolPayload } from "./types";
+import type { ChangeKind, NewStagedChange, ToolPayload } from "./types";
+
+const CHANGE_KINDS: ChangeKind[] = [
+  "TrackMetadataEdit",
+  "CueMetadataEdit",
+  "PlaylistCreate",
+  "PlaylistRename",
+  "PlaylistDelete",
+  "PlaylistAddTrack",
+  "PlaylistRemoveTrack",
+  "PlaylistReorderTrack",
+];
 
 // Tool schemas passed to the Claude API
 export const TOOL_SCHEMAS: Anthropic.Tool[] = [
@@ -101,6 +114,47 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "staging__stage_change",
+    description:
+      "Propose a staged library change for user review. This does not write to the Rekordbox database and does not apply the change.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        kind: {
+          type: "string",
+          enum: CHANGE_KINDS,
+          description: "Type of staged change to propose",
+        },
+        target_id: {
+          type: "string",
+          description: "Affected Rekordbox track, cue, or playlist ID",
+        },
+        field: {
+          type: "string",
+          description: "Changed metadata field, when applicable",
+        },
+        old_value: { description: "Current value, when known" },
+        new_value: { description: "Proposed value" },
+        reason: { type: "string", description: "Short user-facing reason" },
+        confidence: {
+          type: "number",
+          description: "Confidence from 0 to 1, when available",
+        },
+      },
+      required: ["kind"],
+    },
+  },
+  {
+    name: "staging__list_changes",
+    description:
+      "List staged changes and their review status for the active library.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 export async function executeTool(
@@ -146,7 +200,34 @@ export async function executeTool(
       const report = await healthBrokenLinkScan(libraryPath);
       return { tool: "health.broken_link_scan", report };
     }
+    case "staging__stage_change": {
+      const kind = String(input.kind ?? "");
+      if (!CHANGE_KINDS.includes(kind as ChangeKind)) {
+        throw new Error(`Unknown change kind: ${kind}`);
+      }
+      const changeInput: NewStagedChange = {
+        library_path: libraryPath,
+        kind: kind as ChangeKind,
+        target_id: optionalString(input.target_id),
+        field: optionalString(input.field),
+        old_value: input.old_value ?? null,
+        new_value: input.new_value ?? null,
+        reason: optionalString(input.reason),
+        confidence:
+          typeof input.confidence === "number" ? input.confidence : null,
+      };
+      const change = await stageChange(changeInput);
+      return { tool: "staging.stage_change", change };
+    }
+    case "staging__list_changes": {
+      const changes = await listChanges(libraryPath);
+      return { tool: "staging.list_changes", changes };
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }

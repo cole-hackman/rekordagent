@@ -5,6 +5,7 @@ import { TrackDetailPanel } from "./components/TrackDetailPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { PlaylistPanel } from "./components/PlaylistPanel";
+import { DiffReviewPanel } from "./components/DiffReviewPanel";
 import { useAppStore } from "./store/appStore";
 import { useAudioPlayer } from "./hooks/useAudioPlayer";
 import { getLibraryPath, validateLibraryPath, getTheme } from "./ipc";
@@ -19,6 +20,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
   const audio = useAudioPlayer(selectedTrack);
 
   // Apply theme class to <html>
@@ -86,6 +88,13 @@ export default function App() {
             Playlists
           </button>
           <button
+            onClick={() => setShowChanges((v) => !v)}
+            aria-label={showChanges ? "Hide changes" : "Show changes"}
+            className={`rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${showChanges ? "text-indigo-400" : "text-zinc-400"}`}
+          >
+            Changes
+          </button>
+          <button
             onClick={() => setShowChat((v) => !v)}
             aria-label={showChat ? "Close agent" : "Open agent"}
             className={`rounded-md p-1.5 transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${showChat ? "text-indigo-400" : "text-zinc-400"}`}
@@ -132,6 +141,12 @@ export default function App() {
           <ChatPanel
             libraryPath={libraryPath}
             onClose={() => setShowChat(false)}
+          />
+        )}
+        {showChanges && (
+          <DiffReviewPanel
+            libraryPath={libraryPath}
+            onClose={() => setShowChanges(false)}
           />
         )}
       </div>

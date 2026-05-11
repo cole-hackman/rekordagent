@@ -1,5 +1,6 @@
 use crate::migrations;
 use anyhow::{Context, Result};
+use changes::{ChangeKind, ChangeStatus};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -235,6 +236,128 @@ impl CacheDb {
             None => Ok(None),
         }
     }
+
+    // ── Staged changes ─────────────────────────────────────────────────────
+
+    pub fn stage_change(&self, input: NewStagedChange) -> Result<StagedChangeRecord> {
+        let id = new_id("change");
+        let kind = kind_to_db(&input.kind)?;
+        let old_value = optional_json_to_db(&input.old_value)?;
+        let new_value = optional_json_to_db(&input.new_value)?;
+        self.conn.execute(
+            "INSERT INTO staged_changes
+                (id, library_path, kind, target_id, field, old_value, new_value, reason, confidence, status)
+             VALUES
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'Proposed')",
+            rusqlite::params![
+                id,
+                input.library_path,
+                kind,
+                input.target_id,
+                input.field,
+                old_value,
+                new_value,
+                input.reason,
+                input.confidence
+            ],
+        )?;
+        self.load_change(&id)?
+            .context("created staged change was not found")
+    }
+
+    pub fn list_changes(&self, library_path: Option<&str>) -> Result<Vec<StagedChangeRecord>> {
+        if let Some(path) = library_path {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, library_path, kind, target_id, field, old_value, new_value,
+                        reason, confidence, status, created_at, updated_at
+                 FROM staged_changes
+                 WHERE library_path = ?1
+                 ORDER BY updated_at DESC, created_at DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![path], row_to_change)?;
+            return rows
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, library_path, kind, target_id, field, old_value, new_value,
+                    reason, confidence, status, created_at, updated_at
+             FROM staged_changes
+             ORDER BY updated_at DESC, created_at DESC",
+        )?;
+        let rows = stmt.query_map([], row_to_change)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn accept_change(&self, id: &str) -> Result<StagedChangeRecord> {
+        self.transition_change(id, ChangeStatus::Accepted)
+    }
+
+    pub fn reject_change(&self, id: &str) -> Result<StagedChangeRecord> {
+        self.transition_change(id, ChangeStatus::Rejected)
+    }
+
+    pub fn mark_change_exported(&self, id: &str) -> Result<StagedChangeRecord> {
+        self.transition_change(id, ChangeStatus::Exported)
+    }
+
+    pub fn accept_all_safe(&self, library_path: Option<&str>) -> Result<Vec<StagedChangeRecord>> {
+        let proposed = self
+            .list_changes(library_path)?
+            .into_iter()
+            .filter(|change| change.status == ChangeStatus::Proposed)
+            .filter(|change| changes::is_safe_batch_kind(&change.kind))
+            .collect::<Vec<_>>();
+        let mut accepted = Vec::with_capacity(proposed.len());
+        for change in proposed {
+            accepted.push(self.accept_change(&change.id)?);
+        }
+        Ok(accepted)
+    }
+
+    pub fn reject_all(&self, library_path: Option<&str>) -> Result<Vec<StagedChangeRecord>> {
+        let proposed = self
+            .list_changes(library_path)?
+            .into_iter()
+            .filter(|change| change.status == ChangeStatus::Proposed)
+            .collect::<Vec<_>>();
+        let mut rejected = Vec::with_capacity(proposed.len());
+        for change in proposed {
+            rejected.push(self.reject_change(&change.id)?);
+        }
+        Ok(rejected)
+    }
+
+    fn load_change(&self, id: &str) -> Result<Option<StagedChangeRecord>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, library_path, kind, target_id, field, old_value, new_value,
+                    reason, confidence, status, created_at, updated_at
+             FROM staged_changes
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![id], row_to_change)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    fn transition_change(&self, id: &str, to: ChangeStatus) -> Result<StagedChangeRecord> {
+        let change = self
+            .load_change(id)?
+            .with_context(|| format!("change {id} was not found"))?;
+        changes::ensure_transition(&change.status, &to)?;
+        self.conn.execute(
+            "UPDATE staged_changes
+             SET status = ?2, updated_at = unixepoch()
+             WHERE id = ?1",
+            rusqlite::params![id, status_to_db(&to)?],
+        )?;
+        self.load_change(id)?
+            .context("updated staged change was not found")
+    }
 }
 
 /// Cached audio analysis results for one track.
@@ -270,6 +393,9 @@ pub struct ConversationWithMessages {
     pub messages: Vec<ConversationMessage>,
 }
 
+pub type NewStagedChange = changes::NewChange;
+pub type StagedChangeRecord = changes::StagedChange;
+
 fn configure(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
@@ -302,6 +428,76 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationMessa
         role: row.get(2)?,
         content,
         created_at: row.get(4)?,
+    })
+}
+
+fn row_to_change(row: &rusqlite::Row<'_>) -> rusqlite::Result<StagedChangeRecord> {
+    let kind: String = row.get(2)?;
+    let old_value: Option<String> = row.get(5)?;
+    let new_value: Option<String> = row.get(6)?;
+    let status: String = row.get(9)?;
+    Ok(StagedChangeRecord {
+        id: row.get(0)?,
+        library_path: row.get(1)?,
+        kind: parse_string_enum(2, &kind)?,
+        target_id: row.get(3)?,
+        field: row.get(4)?,
+        old_value: parse_optional_json(5, old_value)?,
+        new_value: parse_optional_json(6, new_value)?,
+        reason: row.get(7)?,
+        confidence: row.get(8)?,
+        status: parse_string_enum(9, &status)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn kind_to_db(kind: &ChangeKind) -> Result<String> {
+    enum_to_db(kind)
+}
+
+fn status_to_db(status: &ChangeStatus) -> Result<String> {
+    enum_to_db(status)
+}
+
+fn enum_to_db<T: Serialize>(value: &T) -> Result<String> {
+    serde_json::to_value(value)?
+        .as_str()
+        .map(ToOwned::to_owned)
+        .context("enum did not serialize as string")
+}
+
+fn optional_json_to_db(value: &Option<serde_json::Value>) -> Result<Option<String>> {
+    value
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(Into::into)
+}
+
+fn parse_optional_json(
+    column: usize,
+    value: Option<String>,
+) -> rusqlite::Result<Option<serde_json::Value>> {
+    value
+        .map(|value| {
+            serde_json::from_str(&value).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    column,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })
+        })
+        .transpose()
+}
+
+fn parse_string_enum<T: for<'de> Deserialize<'de>>(
+    column: usize,
+    value: &str,
+) -> rusqlite::Result<T> {
+    serde_json::from_value(serde_json::Value::String(value.to_owned())).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(column, rusqlite::types::Type::Text, Box::new(e))
     })
 }
 
@@ -436,5 +632,85 @@ mod tests {
 
         db.delete_conversation(&conversation.id).unwrap();
         assert!(db.load_conversation(&conversation.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn staged_change_crud_roundtrip() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let change = db
+            .stage_change(NewStagedChange {
+                library_path: Some("/library/master.db".to_owned()),
+                kind: ChangeKind::TrackMetadataEdit,
+                target_id: Some("track-1".to_owned()),
+                field: Some("genre".to_owned()),
+                old_value: Some(serde_json::json!("House")),
+                new_value: Some(serde_json::json!("Deep House")),
+                reason: Some("Normalize genre".to_owned()),
+                confidence: Some(0.88),
+            })
+            .unwrap();
+        assert_eq!(change.status, ChangeStatus::Proposed);
+
+        let list = db.list_changes(Some("/library/master.db")).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].kind, ChangeKind::TrackMetadataEdit);
+
+        let accepted = db.accept_change(&change.id).unwrap();
+        assert_eq!(accepted.status, ChangeStatus::Accepted);
+        let exported = db.mark_change_exported(&change.id).unwrap();
+        assert_eq!(exported.status, ChangeStatus::Exported);
+    }
+
+    #[test]
+    fn staged_change_rejects_invalid_transitions() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let change = db
+            .stage_change(NewStagedChange {
+                library_path: None,
+                kind: ChangeKind::TrackMetadataEdit,
+                target_id: Some("track-1".to_owned()),
+                field: Some("genre".to_owned()),
+                old_value: None,
+                new_value: Some(serde_json::json!("Techno")),
+                reason: None,
+                confidence: None,
+            })
+            .unwrap();
+        db.accept_change(&change.id).unwrap();
+        assert!(db.reject_change(&change.id).is_err());
+    }
+
+    #[test]
+    fn staged_change_batch_operations_scope_by_library() {
+        let db = CacheDb::open_in_memory().unwrap();
+        db.stage_change(NewStagedChange {
+            library_path: Some("/a.db".to_owned()),
+            kind: ChangeKind::TrackMetadataEdit,
+            target_id: Some("track-1".to_owned()),
+            field: Some("genre".to_owned()),
+            old_value: None,
+            new_value: Some(serde_json::json!("House")),
+            reason: None,
+            confidence: None,
+        })
+        .unwrap();
+        db.stage_change(NewStagedChange {
+            library_path: Some("/b.db".to_owned()),
+            kind: ChangeKind::TrackMetadataEdit,
+            target_id: Some("track-2".to_owned()),
+            field: Some("genre".to_owned()),
+            old_value: None,
+            new_value: Some(serde_json::json!("Techno")),
+            reason: None,
+            confidence: None,
+        })
+        .unwrap();
+
+        let accepted = db.accept_all_safe(Some("/a.db")).unwrap();
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(
+            db.list_changes(Some("/b.db")).unwrap()[0].status,
+            ChangeStatus::Proposed
+        );
     }
 }

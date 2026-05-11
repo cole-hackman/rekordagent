@@ -130,6 +130,18 @@ function ToolResultSummary({ result }: { result: ToolResultBlock }) {
       (report.report?.suspicious?.length ?? 0);
     title = "Metadata issues";
     detail = `${count} issues`;
+  } else if (tool === "staging.stage_change") {
+    const change = (payload as {
+      change?: { kind?: string; field?: string | null; status?: string };
+    }).change;
+    title = "Change proposed";
+    detail = [change?.kind, change?.field, change?.status]
+      .filter(Boolean)
+      .join(" · ");
+  } else if (tool === "staging.list_changes") {
+    const changes = (payload as { changes?: unknown[] }).changes ?? [];
+    title = "Staged changes";
+    detail = `${changes.length} changes`;
   }
 
   return (
@@ -175,6 +187,13 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     void sendMessage(text);
   }, [input, isStreaming, sendMessage]);
+
+  const handleAudit = useCallback(() => {
+    if (isStreaming) return;
+    void sendMessage(
+      "Audit missing or bad metadata and playlist issues. Use the available health and playlist tools, summarize the issues, and stage only safe proposed fixes for review. Do not claim anything was applied directly.",
+    );
+  }, [isStreaming, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -257,8 +276,15 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
       {/* Messages */}
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
         {messages.length === 0 && !error && (
-          <div className="flex flex-1 items-center justify-center text-xs text-zinc-600">
-            Ask about your library…
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-xs text-zinc-600">
+            <span>Ask about your library…</span>
+            <button
+              onClick={handleAudit}
+              disabled={isStreaming}
+              className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-indigo-700 hover:text-indigo-300 disabled:opacity-40"
+            >
+              Audit library
+            </button>
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   Track,
   HotCue,
@@ -11,8 +11,10 @@ import type {
 import type {
   ChatMessage,
   ConversationSummary,
+  NewStagedChange,
   PersistedConversation,
   PersistedConversationMessage,
+  StagedChange,
 } from "./agent/types";
 
 export async function pickLibraryPath(): Promise<string | null> {
@@ -150,6 +152,69 @@ export async function renameConversation(
 
 export async function deleteConversation(id: string): Promise<void> {
   return invoke<void>("delete_conversation", { id });
+}
+
+// ── Staged changes ───────────────────────────────────────────────────────────
+
+export async function stageChange(
+  change: NewStagedChange,
+): Promise<StagedChange> {
+  return invoke<StagedChange>("stage_change", { change });
+}
+
+export async function listChanges(
+  libraryPath?: string | null,
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("list_changes", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export async function acceptChange(id: string): Promise<StagedChange> {
+  return invoke<StagedChange>("accept_change", { id });
+}
+
+export async function rejectChange(id: string): Promise<StagedChange> {
+  return invoke<StagedChange>("reject_change", { id });
+}
+
+export async function acceptAllSafe(
+  libraryPath?: string | null,
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("accept_all_safe", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export async function rejectAll(
+  libraryPath?: string | null,
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("reject_all", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export interface ExportResult {
+  output_path: string;
+  exported_count: number;
+}
+
+export async function exportAcceptedChanges(
+  libraryPath: string,
+  outputPath?: string | null,
+): Promise<ExportResult | null> {
+  const resolvedPath =
+    outputPath ??
+    (await save({
+      title: "Export Rekordbox XML",
+      defaultPath: "rekordagent-export.xml",
+      filters: [{ name: "Rekordbox XML", extensions: ["xml"] }],
+    }));
+  if (!resolvedPath) return null;
+  return invoke<ExportResult>("export_accepted_changes", {
+    libraryPath,
+    outputPath: resolvedPath,
+  });
 }
 
 // ── Agent tools ───────────────────────────────────────────────────────────────

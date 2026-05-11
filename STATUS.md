@@ -1,16 +1,19 @@
 # Status
 
 ## Current phase
-Phase 5 — safe staged changes system.
+Phase 10 — local macOS release build completed; Phase 11 UI audit documented.
 
 ## Current task
-Implement staged changes without direct Rekordbox DB writes.
+Manual real-library verification remains the main release blocker. `master.db` writes are still prohibited.
 
 ## Verification baseline
 - `cargo test --workspace`: passing as of 2026-05-11
-- `pnpm test`: passing as of 2026-05-11 (82 tests)
+- `pnpm test`: passing as of 2026-05-11 (85 tests)
 - `pnpm typecheck`: passing as of 2026-05-11
 - `pnpm lint`: passing as of 2026-05-11
+- `pnpm build`: passing as of 2026-05-11
+- `pnpm e2e`: passing as of 2026-05-11 (4 Playwright tests)
+- `pnpm --filter desktop tauri build`: passing as of 2026-05-11
 
 ## Current true implementation state
 - [x] Repo scaffold, Cargo workspace, pnpm workspace, CI workflow.
@@ -26,12 +29,13 @@ Implement staged changes without direct Rekordbox DB writes.
 - [x] Agent read-only MVP tools: search, get track, list playlists, get playlist, list cues, orphan scan, duplicate scan, broken metadata scan.
 - [x] Playlist support: backend playlist detail tool and basic playlist panel UI.
 - [x] Conversation persistence.
-- [ ] Safe staged changes and diff review.
-- [ ] Export accepted changes to Rekordbox XML.
-- [ ] Playwright E2E tests.
+- [x] Safe staged changes and diff review.
+- [x] Export accepted changes to Rekordbox XML.
+- [x] One-click audit workflow entry point in the agent panel.
+- [x] Playwright E2E tests.
 - [ ] Real Rekordbox library manual verification.
-- [ ] macOS packaged app verification.
-- [ ] Final UI audit and redesign recommendations.
+- [x] macOS release build artifacts generated.
+- [x] Final UI audit and redesign recommendations documented.
 
 ## MVP phase checklist
 - [x] Phase 0 — Repo familiarization and status reconciliation.
@@ -39,14 +43,14 @@ Implement staged changes without direct Rekordbox DB writes.
 - [x] Phase 2 — Define MVP agent and playlist scope.
 - [x] Phase 3 — Implement missing read-only agent tools and playlist view.
 - [x] Phase 4 — Persist conversations.
-- [~] Phase 5 — Safe staged changes system.
-- [ ] Phase 6 — Inline diff review UI.
-- [ ] Phase 7 — XML export.
-- [ ] Phase 8 — One complete MVP workflow.
-- [ ] Phase 9 — Playwright E2E.
-- [ ] Phase 10 — Local macOS release build.
-- [ ] Phase 11 — Full UI audit and redesign suggestions.
+- [x] Phase 5 — Safe staged changes system.
+- [x] Phase 6 — Inline diff review UI.
+- [x] Phase 7 — XML export.
+- [x] Phase 8 — One complete MVP workflow.
+- [x] Phase 9 — Playwright E2E.
+- [x] Phase 10 — Local macOS release build.
+- [x] Phase 11 — Full UI audit and redesign suggestions.
 
 ## Blockers
 - Real Rekordbox 7 `master.db` manual testing requires access to a local user library.
-- macOS packaged verification requires local signing/build prerequisites and manual app launch.
+- Packaged app artifacts exist at `target/release/bundle/macos/decks.app` and `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg`, but manual launch verification against a real/disposable library is still required.
