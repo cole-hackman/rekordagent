@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// A track from `djmdContent` with denormalised artist/album/genre/key.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
-    pub id: i64,
+    pub id: String,
     pub title: String,
     pub artist: Option<String>,
     pub album: Option<String>,
@@ -30,9 +30,9 @@ pub struct Track {
 /// A playlist or folder from `djmdPlaylist`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Playlist {
-    pub id: i64,
+    pub id: String,
     pub name: String,
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<String>,
     pub seq: Option<i64>,
     pub kind: PlaylistKind,
 }
@@ -59,16 +59,16 @@ impl PlaylistKind {
 /// A single track entry inside a playlist, from `djmdSongPlaylist`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaylistEntry {
-    pub playlist_id: i64,
-    pub content_id: i64,
+    pub playlist_id: String,
+    pub content_id: String,
     pub track_no: Option<i64>,
 }
 
 /// A hot cue or memory cue from `djmdCue`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HotCue {
-    pub id: i64,
-    pub content_id: i64,
+    pub id: String,
+    pub content_id: String,
     pub in_msec: Option<i64>,
     pub out_msec: Option<i64>,
     pub kind: CueKind,

@@ -33,7 +33,7 @@ import { TrackTable } from "./TrackTable";
 
 const TRACKS: Track[] = [
   {
-    id: 1,
+    id: "1",
     title: "Dark Matter",
     artist: "Surgeon",
     album: null,
@@ -52,7 +52,7 @@ const TRACKS: Track[] = [
     dj_play_count: null,
   },
   {
-    id: 2,
+    id: "2",
     title: "Acid Rain",
     artist: "Aphex Twin",
     album: null,

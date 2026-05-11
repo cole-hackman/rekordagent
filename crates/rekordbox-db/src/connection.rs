@@ -35,7 +35,7 @@ impl RekordboxDb {
         queries::tracks::all(&self.conn)
     }
 
-    pub fn track_by_id(&self, id: i64) -> Result<Option<Track>> {
+    pub fn track_by_id(&self, id: &str) -> Result<Option<Track>> {
         queries::tracks::by_id(&self.conn, id)
     }
 
@@ -49,13 +49,13 @@ impl RekordboxDb {
         queries::playlists::all(&self.conn)
     }
 
-    pub fn playlist_entries(&self, playlist_id: i64) -> Result<Vec<PlaylistEntry>> {
+    pub fn playlist_entries(&self, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
         queries::playlists::entries(&self.conn, playlist_id)
     }
 
     // ── Cues ─────────────────────────────────────────────────────────────────
 
-    pub fn hot_cues_for_track(&self, content_id: i64) -> Result<Vec<HotCue>> {
+    pub fn hot_cues_for_track(&self, content_id: &str) -> Result<Vec<HotCue>> {
         queries::cues::for_track(&self.conn, content_id)
     }
 

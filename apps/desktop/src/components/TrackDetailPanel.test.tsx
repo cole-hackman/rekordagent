@@ -9,7 +9,7 @@ import { useTrackCues } from "../hooks/useTrackCues";
 import { TrackDetailPanel } from "./TrackDetailPanel";
 
 const BASE_TRACK: Track = {
-  id: 1,
+  id: "1",
   title: "Dark Matter",
   artist: "Surgeon",
   album: "Force + Form",
@@ -29,9 +29,9 @@ const BASE_TRACK: Track = {
 };
 
 const CUES: HotCue[] = [
-  { id: 1, content_id: 1, in_msec: 8000, out_msec: null, kind: { HotCue: 1 }, color: null, comment: "Intro" },
-  { id: 2, content_id: 1, in_msec: 45000, out_msec: null, kind: "MemoryCue", color: null, comment: null },
-  { id: 3, content_id: 1, in_msec: 120500, out_msec: null, kind: { HotCue: 2 }, color: null, comment: "Drop" },
+  { id: "1", content_id: "1", in_msec: 8000, out_msec: null, kind: { HotCue: 1 }, color: null, comment: "Intro" },
+  { id: "2", content_id: "1", in_msec: 45000, out_msec: null, kind: "MemoryCue", color: null, comment: null },
+  { id: "3", content_id: "1", in_msec: 120500, out_msec: null, kind: { HotCue: 2 }, color: null, comment: "Drop" },
 ];
 
 function wrapper({ children }: { children: React.ReactNode }) {

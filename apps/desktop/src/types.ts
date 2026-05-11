@@ -7,8 +7,8 @@ export type CueKind = "MemoryCue" | { HotCue: number };
 
 /** Mirrors `rekordbox_db::types::HotCue`. */
 export interface HotCue {
-  id: number;
-  content_id: number;
+  id: string;
+  content_id: string;
   in_msec: number | null;
   out_msec: number | null;
   kind: CueKind;
@@ -21,13 +21,13 @@ export interface Playlist {
   id: number;
   name: string;
   kind: "Playlist" | "Folder" | "SmartPlaylist";
-  parent_id: number | null;
-  seq: number;
+  parent_id: string | null;
+  seq: number | null;
 }
 
 /** Mirrors `rekordbox_db::types::Track` (serde snake_case). */
 export interface Track {
-  id: number;
+  id: string;
   title: string;
   artist: string | null;
   album: string | null;

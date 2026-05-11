@@ -61,7 +61,7 @@ pub fn all(conn: &Connection) -> Result<Vec<Track>> {
         .map_err(Into::into)
 }
 
-pub fn by_id(conn: &Connection, id: i64) -> Result<Option<Track>> {
+pub fn by_id(conn: &Connection, id: &str) -> Result<Option<Track>> {
     let sql = format!("{SELECT} AND c.ID = ?1");
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query_map(params![id], row_to_track)?;
@@ -112,13 +112,13 @@ mod tests {
         let (_path, conn) = make_db();
         let tracks = all(&conn).unwrap();
         assert_eq!(tracks.len(), 3, "seed has 3 live tracks");
-        assert!(tracks.iter().all(|t| t.id > 0));
+        assert!(tracks.iter().all(|t| !t.id.is_empty()));
     }
 
     #[test]
     fn by_id_found() {
         let (_path, conn) = make_db();
-        let t = by_id(&conn, 1).unwrap();
+        let t = by_id(&conn, "1").unwrap();
         assert!(t.is_some());
         assert_eq!(t.unwrap().title, "Test Track Alpha");
     }
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn by_id_not_found() {
         let (_path, conn) = make_db();
-        assert!(by_id(&conn, 9999).unwrap().is_none());
+        assert!(by_id(&conn, "9999").unwrap().is_none());
     }
 
     #[test]

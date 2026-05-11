@@ -57,12 +57,12 @@ async fn list_tracks(path: String) -> Result<Vec<decks_core::rekordbox_db::Track
 #[tauri::command]
 async fn get_track_cues(
     path: String,
-    track_id: i64,
+    track_id: String,
 ) -> Result<Vec<decks_core::rekordbox_db::HotCue>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
             .map_err(|e| e.to_string())?;
-        db.hot_cues_for_track(track_id).map_err(|e| e.to_string())
+        db.hot_cues_for_track(&track_id).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

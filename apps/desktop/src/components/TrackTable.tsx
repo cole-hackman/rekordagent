@@ -71,7 +71,7 @@ const COLUMNS: ColumnDef<Track>[] = [
 interface Props {
   libraryPath: string;
   filter: string;
-  selectedTrackId: number | null;
+  selectedTrackId: string | null;
   onSelect: (track: Track) => void;
 }
 
