@@ -12,8 +12,8 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 - [ ] Phase 1 — Stabilize current foundation and tag `v0.1.0`.
 - [x] Phase 2 — Define MVP agent and playlist scope.
 - [x] Phase 3 — Implement missing read-only agent tools and playlist view.
-- [~] Phase 4 — Conversation persistence.
-- [ ] Phase 5 — Safe staged changes system.
+- [x] Phase 4 — Conversation persistence.
+- [~] Phase 5 — Safe staged changes system.
 - [ ] Phase 6 — Inline diff review UI.
 - [ ] Phase 7 — XML export.
 - [ ] Phase 8 — One complete MVP workflow.
@@ -63,11 +63,11 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 
 ## Phase 4 — Conversation Persistence
 
-- [ ] Add cache migrations for conversations, messages, and tool calls/results.
-- [ ] Add Tauri conversation CRUD commands.
-- [ ] Add frontend active conversation state and minimal selector UI.
-- [ ] Persist library association, timestamps, roles, content blocks, tool inputs, and results.
-- [ ] Add cache and frontend tests.
+- [x] Add cache migrations for conversations, messages, and tool calls/results.
+- [x] Add Tauri conversation CRUD commands.
+- [x] Add frontend active conversation state and minimal selector UI.
+- [x] Persist library association, timestamps, roles, content blocks, tool inputs, and results.
+- [x] Add cache and frontend tests.
 
 ## Phase 5 — Safe Staged Changes System
 

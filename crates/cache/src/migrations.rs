@@ -18,6 +18,31 @@ pub const MIGRATIONS: &[(u32, &str)] = &[
         );
         ",
     ),
+    (
+        2,
+        "
+        CREATE TABLE IF NOT EXISTS conversations (
+            id           TEXT PRIMARY KEY,
+            library_path TEXT,
+            title        TEXT NOT NULL,
+            created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+            id              TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            role            TEXT NOT NULL,
+            content_json    TEXT NOT NULL,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation
+            ON conversation_messages(conversation_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_conversations_library_updated
+            ON conversations(library_path, updated_at DESC);
+        ",
+    ),
 ];
 
 pub fn current_version(conn: &rusqlite::Connection) -> anyhow::Result<u32> {
@@ -82,6 +107,25 @@ mod tests {
         .unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM audio_features", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn conversation_tables_exist_after_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        run(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO conversations (id, library_path, title)
+             VALUES ('c1', '/db', 'Test');
+             INSERT INTO conversation_messages (id, conversation_id, role, content_json)
+             VALUES ('m1', 'c1', 'user', '{\"text\":\"hello\"}');",
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM conversation_messages", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(count, 1);
     }

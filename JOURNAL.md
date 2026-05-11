@@ -244,3 +244,18 @@
   - `pnpm typecheck` passed.
   - `pnpm lint` passed.
 - Next: implement conversation persistence in the cache layer and wire it into chat.
+
+### Checkpoint — conversation persistence
+- Shipped:
+  - Added cache schema v2 for conversations and conversation messages.
+  - Added `CacheDb` conversation CRUD APIs with round-trip tests.
+  - Added Tauri IPC commands for conversation list/create/load/append/rename/delete.
+  - Added frontend IPC wrappers and persisted conversation types.
+  - Wired chat to create conversations on first message, persist user/assistant/tool-result messages, load previous conversations, start a new chat, and delete the active conversation.
+  - Added chat header conversation selector UI.
+- Verification:
+  - `cargo test --workspace` passed.
+  - `pnpm test` passed: 82 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+- Next: implement safe staged changes and diff review.

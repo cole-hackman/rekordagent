@@ -141,8 +141,18 @@ function ToolResultSummary({ result }: { result: ToolResultBlock }) {
 }
 
 export function ChatPanel({ libraryPath, onClose }: Props) {
-  const { messages, isStreaming, error, sendMessage, clearMessages } =
-    useAgent(libraryPath);
+  const {
+    messages,
+    conversations,
+    activeConversationId,
+    isStreaming,
+    error,
+    sendMessage,
+    clearMessages,
+    newConversation,
+    loadConversation,
+    deleteActiveConversation,
+  } = useAgent(libraryPath);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -177,8 +187,37 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
     <div className="flex h-full w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <span className="text-sm font-semibold text-zinc-100">Agent</span>
-        <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-semibold text-zinc-100">Agent</span>
+          {conversations.length > 0 && (
+            <select
+              aria-label="Conversation"
+              value={activeConversationId ?? ""}
+              onChange={(event) => void loadConversation(event.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="" disabled>
+                Select conversation
+              </option>
+              {conversations.map((conversation) => (
+                <option key={conversation.id} value={conversation.id}>
+                  {conversation.title}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="ml-2 flex items-center gap-1">
+          <button
+            onClick={newConversation}
+            aria-label="New conversation"
+            title="New conversation"
+            className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M8 1.75a.75.75 0 01.75.75v4.75h4.75a.75.75 0 010 1.5H8.75v4.75a.75.75 0 01-1.5 0V8.75H2.5a.75.75 0 010-1.5h4.75V2.5A.75.75 0 018 1.75z" />
+            </svg>
+          </button>
           {messages.length > 0 && (
             <button
               onClick={clearMessages}
@@ -188,6 +227,18 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
                 <path d="M2.5 1a1 1 0 00-1 1v1a1 1 0 001 1H3v9a2 2 0 002 2h6a2 2 0 002-2V4h.5a1 1 0 001-1V2a1 1 0 00-1-1H10a1 1 0 00-1-1H7a1 1 0 00-1 1H2.5zm3 4a.5.5 0 011 0v7a.5.5 0 01-1 0V5zm3 0a.5.5 0 011 0v7a.5.5 0 01-1 0V5z" />
+              </svg>
+            </button>
+          )}
+          {activeConversationId && (
+            <button
+              onClick={() => void deleteActiveConversation()}
+              aria-label="Delete conversation"
+              title="Delete conversation"
+              className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+                <path d="M6.5 1h3a1 1 0 011 1v1h3a.75.75 0 010 1.5h-.5v8A2.5 2.5 0 0110.5 15h-5A2.5 2.5 0 013 12.5v-8h-.5a.75.75 0 010-1.5h3V2a1 1 0 011-1zm1 2h1V2.5h-1V3zm-3 1.5v8A1 1 0 005.5 13.5h5a1 1 0 001-1v-8h-7z" />
               </svg>
             </button>
           )}

@@ -1,7 +1,9 @@
 use crate::migrations;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Handle to the local SQLite WAL cache database.
 pub struct CacheDb {
@@ -107,6 +109,132 @@ impl CacheDb {
     pub fn schema_version(&self) -> Result<u32> {
         migrations::current_version(&self.conn)
     }
+
+    // ── Conversations ───────────────────────────────────────────────────────
+
+    pub fn create_conversation(
+        &self,
+        library_path: Option<&str>,
+        title: &str,
+    ) -> Result<Conversation> {
+        let id = new_id("conv");
+        self.conn.execute(
+            "INSERT INTO conversations (id, library_path, title)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![id, library_path, title],
+        )?;
+        self.load_conversation_metadata(&id)?
+            .context("created conversation was not found")
+    }
+
+    pub fn list_conversations(&self, library_path: Option<&str>) -> Result<Vec<Conversation>> {
+        if let Some(path) = library_path {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, library_path, title, created_at, updated_at
+                 FROM conversations
+                 WHERE library_path = ?1
+                 ORDER BY updated_at DESC, created_at DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![path], row_to_conversation)?;
+            return rows
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, library_path, title, created_at, updated_at
+             FROM conversations
+             ORDER BY updated_at DESC, created_at DESC",
+        )?;
+        let rows = stmt.query_map([], row_to_conversation)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn load_conversation(&self, id: &str) -> Result<Option<ConversationWithMessages>> {
+        let Some(conversation) = self.load_conversation_metadata(id)? else {
+            return Ok(None);
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id, conversation_id, role, content_json, created_at
+             FROM conversation_messages
+             WHERE conversation_id = ?1
+             ORDER BY created_at, rowid",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![id], row_to_message)?;
+        let messages = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(anyhow::Error::from)?;
+        Ok(Some(ConversationWithMessages {
+            conversation,
+            messages,
+        }))
+    }
+
+    pub fn append_conversation_message(
+        &self,
+        conversation_id: &str,
+        role: &str,
+        content: serde_json::Value,
+    ) -> Result<ConversationMessage> {
+        let id = new_id("msg");
+        let content_json = serde_json::to_string(&content)?;
+        self.conn.execute(
+            "INSERT INTO conversation_messages (id, conversation_id, role, content_json)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, conversation_id, role, content_json],
+        )?;
+        self.conn.execute(
+            "UPDATE conversations SET updated_at = unixepoch() WHERE id = ?1",
+            rusqlite::params![conversation_id],
+        )?;
+        self.load_message(&id)?
+            .context("created conversation message was not found")
+    }
+
+    pub fn rename_conversation(&self, id: &str, title: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE conversations
+             SET title = ?2, updated_at = unixepoch()
+             WHERE id = ?1",
+            rusqlite::params![id, title],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_conversation(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM conversations WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    fn load_conversation_metadata(&self, id: &str) -> Result<Option<Conversation>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, library_path, title, created_at, updated_at
+             FROM conversations
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![id], row_to_conversation)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    fn load_message(&self, id: &str) -> Result<Option<ConversationMessage>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, conversation_id, role, content_json, created_at
+             FROM conversation_messages
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![id], row_to_message)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
 }
 
 /// Cached audio analysis results for one track.
@@ -118,6 +246,30 @@ pub struct AudioFeatures {
     pub features_json: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    pub library_path: Option<String>,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub conversation_id: String,
+    pub role: String,
+    pub content: serde_json::Value,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationWithMessages {
+    pub conversation: Conversation,
+    pub messages: Vec<ConversationMessage>,
+}
+
 fn configure(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
@@ -127,6 +279,38 @@ fn configure(conn: &Connection) -> Result<()> {
     )
     .context("configuring SQLite pragmas")?;
     Ok(())
+}
+
+fn row_to_conversation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Conversation> {
+    Ok(Conversation {
+        id: row.get(0)?,
+        library_path: row.get(1)?,
+        title: row.get(2)?,
+        created_at: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationMessage> {
+    let content_json: String = row.get(3)?;
+    let content = serde_json::from_str(&content_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(e))
+    })?;
+    Ok(ConversationMessage {
+        id: row.get(0)?,
+        conversation_id: row.get(1)?,
+        role: row.get(2)?,
+        content,
+        created_at: row.get(4)?,
+    })
+}
+
+fn new_id(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("{prefix}_{nanos}")
 }
 
 #[cfg(test)]
@@ -221,5 +405,36 @@ mod tests {
         // In-memory always reports "memory" regardless; file DBs report "wal".
         // Just verify the pragma executes without error.
         assert!(!mode.is_empty());
+    }
+
+    #[test]
+    fn conversation_crud_roundtrip() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let conversation = db
+            .create_conversation(Some("/library/master.db"), "Library audit")
+            .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "user",
+            serde_json::json!({"text": "audit my playlists"}),
+        )
+        .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "assistant",
+            serde_json::json!({"blocks": [{"type": "text", "text": "Done"}]}),
+        )
+        .unwrap();
+
+        let loaded = db.load_conversation(&conversation.id).unwrap().unwrap();
+        assert_eq!(loaded.conversation.title, "Library audit");
+        assert_eq!(loaded.messages.len(), 2);
+        assert_eq!(loaded.messages[0].role, "user");
+
+        let list = db.list_conversations(Some("/library/master.db")).unwrap();
+        assert_eq!(list.len(), 1);
+
+        db.delete_conversation(&conversation.id).unwrap();
+        assert!(db.load_conversation(&conversation.id).unwrap().is_none());
     }
 }

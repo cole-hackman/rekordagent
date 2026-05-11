@@ -47,6 +47,27 @@ export interface ToolResultMessage {
 
 export type ChatMessage = UserMessage | AssistantMessage | ToolResultMessage;
 
+export interface ConversationSummary {
+  id: string;
+  library_path: string | null;
+  title: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface PersistedConversationMessage {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content: ChatMessage;
+  created_at: number;
+}
+
+export interface PersistedConversation {
+  conversation: ConversationSummary;
+  messages: PersistedConversationMessage[];
+}
+
 // ── Tool result payload types ─────────────────────────────────────────────────
 
 export interface SearchResult {

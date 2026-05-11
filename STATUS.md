@@ -1,14 +1,14 @@
 # Status
 
 ## Current phase
-Phase 4 — conversation persistence.
+Phase 5 — safe staged changes system.
 
 ## Current task
-Persist agent conversations locally using the existing cache layer.
+Implement staged changes without direct Rekordbox DB writes.
 
 ## Verification baseline
 - `cargo test --workspace`: passing as of 2026-05-11
-- `pnpm test`: passing as of 2026-05-11 (80 tests)
+- `pnpm test`: passing as of 2026-05-11 (82 tests)
 - `pnpm typecheck`: passing as of 2026-05-11
 - `pnpm lint`: passing as of 2026-05-11
 
@@ -25,7 +25,7 @@ Persist agent conversations locally using the existing cache layer.
 - [x] Settings: theme, library path change, Anthropic API key in OS keychain.
 - [x] Agent read-only MVP tools: search, get track, list playlists, get playlist, list cues, orphan scan, duplicate scan, broken metadata scan.
 - [x] Playlist support: backend playlist detail tool and basic playlist panel UI.
-- [ ] Conversation persistence.
+- [x] Conversation persistence.
 - [ ] Safe staged changes and diff review.
 - [ ] Export accepted changes to Rekordbox XML.
 - [ ] Playwright E2E tests.
@@ -38,8 +38,8 @@ Persist agent conversations locally using the existing cache layer.
 - [ ] Phase 1 — Stabilize current foundation and tag `v0.1.0`.
 - [x] Phase 2 — Define MVP agent and playlist scope.
 - [x] Phase 3 — Implement missing read-only agent tools and playlist view.
-- [~] Phase 4 — Persist conversations.
-- [ ] Phase 5 — Safe staged changes system.
+- [x] Phase 4 — Persist conversations.
+- [~] Phase 5 — Safe staged changes system.
 - [ ] Phase 6 — Inline diff review UI.
 - [ ] Phase 7 — XML export.
 - [ ] Phase 8 — One complete MVP workflow.

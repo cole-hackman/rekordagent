@@ -8,6 +8,12 @@ import type {
   DuplicateGroup,
   BrokenMetadataReport,
 } from "./types";
+import type {
+  ChatMessage,
+  ConversationSummary,
+  PersistedConversation,
+  PersistedConversationMessage,
+} from "./agent/types";
 
 export async function pickLibraryPath(): Promise<string | null> {
   const result = await open({
@@ -95,6 +101,55 @@ export async function setApiKey(service: string, key: string): Promise<void> {
 
 export async function deleteApiKey(service: string): Promise<void> {
   return invoke<void>("delete_api_key", { service });
+}
+
+// ── Conversations ────────────────────────────────────────────────────────────
+
+export async function listConversations(
+  libraryPath?: string | null,
+): Promise<ConversationSummary[]> {
+  return invoke<ConversationSummary[]>("list_conversations", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export async function createConversation(
+  libraryPath: string | null,
+  title: string,
+): Promise<ConversationSummary> {
+  return invoke<ConversationSummary>("create_conversation", {
+    libraryPath,
+    title,
+  });
+}
+
+export async function loadConversation(
+  id: string,
+): Promise<PersistedConversation | null> {
+  return invoke<PersistedConversation | null>("load_conversation", { id });
+}
+
+export async function appendConversationMessage(
+  conversationId: string,
+  role: string,
+  content: ChatMessage,
+): Promise<PersistedConversationMessage> {
+  return invoke<PersistedConversationMessage>("append_conversation_message", {
+    conversationId,
+    role,
+    content,
+  });
+}
+
+export async function renameConversation(
+  id: string,
+  title: string,
+): Promise<void> {
+  return invoke<void>("rename_conversation", { id, title });
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  return invoke<void>("delete_conversation", { id });
 }
 
 // ── Agent tools ───────────────────────────────────────────────────────────────

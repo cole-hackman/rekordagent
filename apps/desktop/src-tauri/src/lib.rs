@@ -9,6 +9,12 @@ struct PlaylistDetail {
     tracks: Vec<decks_core::rekordbox_db::Track>,
 }
 
+fn cache_db(app: &tauri::AppHandle) -> Result<cache::CacheDb, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    cache::CacheDb::open(&data_dir.join("cache.sqlite3")).map_err(|e| e.to_string())
+}
+
 // ── Config helpers ────────────────────────────────────────────────────────────
 
 fn read_config(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -256,6 +262,67 @@ async fn delete_api_key(service: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
+// ── Conversation commands ────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn list_conversations(
+    app: tauri::AppHandle,
+    library_path: Option<String>,
+) -> Result<Vec<cache::Conversation>, String> {
+    let db = cache_db(&app)?;
+    db.list_conversations(library_path.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn create_conversation(
+    app: tauri::AppHandle,
+    library_path: Option<String>,
+    title: String,
+) -> Result<cache::Conversation, String> {
+    let db = cache_db(&app)?;
+    db.create_conversation(library_path.as_deref(), &title)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn load_conversation(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<Option<cache::ConversationWithMessages>, String> {
+    let db = cache_db(&app)?;
+    db.load_conversation(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn append_conversation_message(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    role: String,
+    content: serde_json::Value,
+) -> Result<cache::ConversationMessage, String> {
+    let db = cache_db(&app)?;
+    db.append_conversation_message(&conversation_id, &role, content)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn rename_conversation(
+    app: tauri::AppHandle,
+    id: String,
+    title: String,
+) -> Result<(), String> {
+    let db = cache_db(&app)?;
+    db.rename_conversation(&id, &title)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let db = cache_db(&app)?;
+    db.delete_conversation(&id).map_err(|e| e.to_string())
+}
+
 // ── Audio commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -315,6 +382,12 @@ pub fn run() {
             get_api_key,
             set_api_key,
             delete_api_key,
+            list_conversations,
+            create_conversation,
+            load_conversation,
+            append_conversation_message,
+            rename_conversation,
+            delete_conversation,
             play_track,
             pause_audio,
             resume_audio,

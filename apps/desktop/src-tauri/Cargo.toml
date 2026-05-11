@@ -23,6 +23,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rodio = { version = "0.19", features = ["symphonia-all"] }
 keyring = "2"
 decks-core = { path = "../../../crates/decks-core" }
+cache = { path = "../../../crates/cache" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -7,10 +7,15 @@ const mockSendMessage = vi.fn();
 const mockClearMessages = vi.fn();
 let agentState = {
   messages: [] as import("../agent/types").ChatMessage[],
+  conversations: [] as import("../agent/types").ConversationSummary[],
+  activeConversationId: null as string | null,
   isStreaming: false,
   error: null as string | null,
   sendMessage: mockSendMessage,
   clearMessages: mockClearMessages,
+  newConversation: vi.fn(),
+  loadConversation: vi.fn(),
+  deleteActiveConversation: vi.fn(),
 };
 
 vi.mock("../agent/useAgent", () => ({
@@ -22,10 +27,15 @@ const defaultProps = { libraryPath: "/fake/master.db", onClose: vi.fn() };
 beforeEach(() => {
   agentState = {
     messages: [],
+    conversations: [],
+    activeConversationId: null,
     isStreaming: false,
     error: null,
     sendMessage: mockSendMessage,
     clearMessages: mockClearMessages,
+    newConversation: vi.fn(),
+    loadConversation: vi.fn(),
+    deleteActiveConversation: vi.fn(),
   };
   vi.clearAllMocks();
 });
@@ -178,6 +188,48 @@ describe("ChatPanel", () => {
     render(<ChatPanel {...defaultProps} />);
     fireEvent.click(screen.getByLabelText("Clear chat"));
     expect(mockClearMessages).toHaveBeenCalled();
+  });
+
+  it("renders conversation selector when conversations exist", () => {
+    agentState.conversations = [
+      {
+        id: "conv_1",
+        title: "Library audit",
+        library_path: "/fake/master.db",
+        created_at: 1,
+        updated_at: 2,
+      },
+    ];
+    agentState.activeConversationId = "conv_1";
+    render(<ChatPanel {...defaultProps} />);
+    expect(screen.getByDisplayValue("Library audit")).toBeTruthy();
+  });
+
+  it("loads selected conversation", () => {
+    const loadConversation = vi.fn();
+    agentState.conversations = [
+      {
+        id: "conv_1",
+        title: "Library audit",
+        library_path: "/fake/master.db",
+        created_at: 1,
+        updated_at: 2,
+      },
+      {
+        id: "conv_2",
+        title: "Playlist review",
+        library_path: "/fake/master.db",
+        created_at: 3,
+        updated_at: 4,
+      },
+    ];
+    agentState.activeConversationId = "conv_1";
+    agentState.loadConversation = loadConversation;
+    render(<ChatPanel {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText("Conversation"), {
+      target: { value: "conv_2" },
+    });
+    expect(loadConversation).toHaveBeenCalledWith("conv_2");
   });
 
   it("shows spinner in send button while streaming", () => {
