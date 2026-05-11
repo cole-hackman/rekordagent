@@ -54,6 +54,18 @@ Known `v0.1.0` limitations:
 - [ ] Rejected changes are not exported.
 - [ ] `master.db` remains unmodified.
 
+## MCP Host Checklist
+
+- [ ] Build CLI with `cargo build -p decks-cli`.
+- [ ] `cargo run -p decks-cli -- tools call library_search --library fixtures/tiny-library/master.db --json '{"query":"Dark","limit":5}'` returns JSON.
+- [ ] Raw `tools/list` smoke test returns `library_search`.
+- [ ] Claude Code registers the server with `claude mcp add -s user rekordagent -- /Users/coleh/rekordagent/target/debug/decks mcp`.
+- [ ] `claude mcp list` shows `rekordagent`.
+- [ ] Claude Code can call `library_search` against a real Rekordbox `master.db`.
+- [ ] Gemini CLI registers and lists the same MCP server.
+- [ ] MCP tools do not write directly to `master.db`.
+- [ ] OpenAI path is treated as pending until HTTP MCP transport exists.
+
 ## macOS Build Artifacts
 
 Latest local build completed on 2026-05-11:

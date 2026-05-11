@@ -35,3 +35,23 @@
 3. Detecting Claude Code status gives users an accurate explanation without blocking current agent functionality.
 
 **Follow-up:** Add a separate Claude Code runtime adapter if it can preserve tool execution, conversation persistence, and safe staged-change behavior without direct Rekordbox DB writes.
+
+## ADR-0003 — MCP Server as the Subscription-Friendly Runtime Path
+
+**Date:** 2026-05-11
+**Status:** Accepted
+
+**Context:** Claude Code can use a Claude subscription as the model host and call local tools through MCP. OpenAI and Gemini can also consume MCP through their supported host surfaces, though OpenAI API usage generally needs a reachable HTTP/remote MCP transport rather than local stdio.
+
+**Decision:** Make Rekordagent's backend tools available through a provider-neutral MCP server. Keep the embedded Tauri chat on Anthropic API keys for now, while recommending Claude Code + `decks mcp` for subscription-backed Claude usage.
+
+**Reasons:**
+1. This matches the proven reklawdbox-style model: model host owns authentication/subscription, Rekordagent owns local tools.
+2. It avoids pretending a Claude Pro subscription is an Anthropic API key.
+3. A shared Rust tool service keeps MCP, CLI, and Tauri behavior aligned.
+4. Stdio MCP is the fastest path for Claude Code and Gemini CLI; HTTP MCP can be added later for OpenAI remote MCP.
+
+**Trade-offs accepted:**
+- The in-app chat still needs an API key until it is replaced or backed by an external host workflow.
+- MCP discovery uses host-safe underscore tool names while internal documentation may still mention dotted semantic names.
+- XML export is not advertised over MCP until export logic moves into the shared tool service.

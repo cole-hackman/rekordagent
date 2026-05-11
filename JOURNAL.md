@@ -337,3 +337,81 @@
   - `pnpm lint` passed.
 - Remaining:
   - Implement a real Claude Code runtime adapter if subscription-backed in-app chat is required for MVP.
+
+## 2026-05-11 — Second UI polish pass
+
+### Plan
+Tighten table density, commit to a labeled sidebar, build structured library filters,
+surface playlist duplicate entries (without deleting them), expand the playlist track
+table, and give the inspector a useful empty state. No waveform, no DB writes.
+
+### End-of-session shipped
+- **Track table density**: row height 36 → 28, mono tabular numerics at 11px, sharper
+  borders (`border-edge/30`), SVG sort chevrons, no header hover-bg.
+- **Sidebar labeled style**: width 56 → 176 (`w-44`), horizontal icon + label rows at
+  h-9, 3px amber active rule, version footer (`decks · 0.1.0`).
+- **Structured filter system**:
+  - New `src/lib/filters.ts` with `applyFilters` pure predicate stack and
+    `activeFilterCount` helper.
+  - New `FilterDrawer` slide-in panel: BPM range, year range, key/genre multi-select
+    pills, missing-metadata toggles (artist/bpm/key/genre/year), has-cues tri-state,
+    not-in-any-playlist, comment-contains.
+  - New `FilterChips` row under the header showing active filters with one-click
+    removal and a "Clear all" link inside the drawer.
+  - New "Filters" button in the header with a count badge.
+  - Two new read-only Tauri commands: `list_tracks_with_cues` and
+    `list_tracks_in_any_playlist` (both pure `SELECT DISTINCT` against
+    `djmdCue` / `djmdSongPlaylist`).
+  - New `useFilterContext` hook precomputes the two Sets once per library.
+- **Playlist duplicate handling**: confirmed `djmdSongPlaylist` legitimately stores one
+  row per playlist entry. Added `src/lib/playlist-dedupe.ts` `findDuplicates` returning
+  per-row occurrence ranks. Rows where rank ≥ 2 get a `DUP` badge; the playlist header
+  reports the total duplicate row count.
+- **Playlist columns**: extended from 5 to 9 columns (position, health dot, title +
+  optional DUP badge, artist, genre, BPM, key, duration, year). Subtle position
+  numbers (`text-ink-faint`), warning dot when artist/bpm/key/genre is missing.
+- **Inspector empty state**: `Details` toggle is now always visible on Library /
+  Playlists views. With no selection the inspector renders a helpful empty card
+  instead of disappearing.
+
+### Verification
+- `cargo test --workspace`: passed (added `track_ids_with_cues_distinct` and
+  `track_ids_in_any_playlist_distinct`).
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed — 116 tests (was 93). New tests: 15 in `filters.test.ts`, 5 in
+  `playlist-dedupe.test.ts`, +3 in playlist/track table component tests.
+- `pnpm lint`: passed (fixed pre-existing fast-refresh warning in `Toast.tsx`).
+- `pnpm vite build`: passed (CSS 35.29 KB, JS 487 KB).
+
+### Decisions
+- Filters intentionally do **not** persist across app restarts. Filter state lives in
+  `App.tsx` only; revisit if user feedback asks for it.
+- "Broken file path" and "library-wide duplicate-candidates" filters deliberately
+  deferred — both require additional fs probe / heuristic work.
+- Playlist duplicates surfaced via badge, not removed. The data is correct; the user
+  should know when their playlist has a repeat.
+
+### Next
+- Real Rekordbox library verification still pending.
+- Real waveform rendering remains deferred (needs Rust audio decoder).
+
+## 2026-05-11 — MCP runtime foundation
+
+### Shipped
+- Added `crates/agent-tools`, a shared Rust service for Rekordagent library/health/staging tool execution.
+- Added `decks mcp`, a newline-delimited stdio MCP server for local MCP hosts.
+- Added `decks tools call`, a diagnostic CLI for direct tool invocation.
+- Advertised MCP-safe underscore tool names while accepting dotted aliases for implemented tools.
+- Added MCP handling for `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, and `prompts/list`.
+- Kept XML export out of MCP discovery until the shared service owns the export path.
+- Documented Claude Code, Gemini CLI, and OpenAI runtime options in `docs/MCP.md`.
+
+### Verification
+- `cargo test -p agent-tools`: passed.
+- `cargo test -p agent-tools mcp`: passed.
+- `cargo test -p decks-cli`: passed.
+- `rustfmt --check crates/agent-tools/src/lib.rs crates/agent-tools/src/mcp.rs apps/cli/src/main.rs`: passed.
+
+### Notes
+- Full `cargo fmt --all -- --check` is currently blocked by unrelated formatting drift in `crates/rekordbox-db/src/queries/playlists.rs`.
+- OpenAI still needs an HTTP MCP transport; current implementation is stdio for local hosts.

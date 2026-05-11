@@ -1,14 +1,14 @@
 # Status
 
 ## Current phase
-Phase 10 — local macOS release build completed; Phase 11 UI audit documented.
+Phase 13 — local stdio MCP server implemented for external model hosts.
 
 ## Current task
 Manual real-library verification remains the main release blocker. `master.db` writes are still prohibited.
 
 ## Verification baseline
-- `cargo test --workspace`: passing as of 2026-05-11
-- `pnpm test`: passing as of 2026-05-11 (93 tests)
+- `cargo test --workspace`: passing as of 2026-05-11 (cues + playlists gained `track_ids_*` tests)
+- `pnpm test`: passing as of 2026-05-11 (116 tests, +23 since previous pass)
 - `pnpm typecheck`: passing as of 2026-05-11
 - `pnpm lint`: passing as of 2026-05-11
 - `pnpm build`: passing as of 2026-05-11
@@ -40,6 +40,13 @@ Manual real-library verification remains the main release blocker. `master.db` w
 - [x] Deterministic synthetic fixture generator: `scripts/seed-test-library.sh`.
 - [x] Playlist view fills available workspace height instead of a fixed short band.
 - [x] Cue query supports additional real-library `djmdCue` column variants.
+- [x] Phase 12 — second UI polish pass: denser track table (28px rows, IBM Plex Mono numerics), labeled sidebar (168px, amber active rule), structured filter system with drawer + chips (BPM/year ranges, key/genre multi-select, missing-metadata toggles, has-cues, not-in-any-playlist, comment-contains), playlist duplicate badges + duplicate count, expanded playlist columns (health dot, genre, time, year), inspector empty state, always-visible Details toggle.
+- [x] Two new read-only IPC commands: `list_tracks_with_cues`, `list_tracks_in_any_playlist`.
+- [x] Confirmed playlist duplicates are real Rekordbox `djmdSongPlaylist` entries — surfaced via DUP badge, not deleted.
+- [x] Shared `agent-tools` Rust service for provider-neutral tool execution.
+- [x] `decks mcp` local stdio MCP server for Claude Code, Gemini CLI, and other local MCP hosts.
+- [x] `decks tools call` diagnostic CLI for direct tool invocation.
+- [ ] HTTP MCP transport for OpenAI Responses API remote MCP usage.
 
 ## MVP phase checklist
 - [x] Phase 0 — Repo familiarization and status reconciliation.
@@ -58,4 +65,4 @@ Manual real-library verification remains the main release blocker. `master.db` w
 ## Blockers
 - Real Rekordbox 7 `master.db` manual testing requires access to a local user library.
 - Packaged app artifacts exist at `target/release/bundle/macos/decks.app` and `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg`, but manual launch verification against a real/disposable library is still required.
-- Claude Code is detected locally, but the in-app agent runtime still uses Anthropic API keys until a dedicated Claude Code adapter is implemented.
+- Claude Code is detected locally. Subscription-backed Claude use is now supported through Claude Code as the MCP host; the embedded Tauri chat still uses Anthropic API keys.
