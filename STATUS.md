@@ -36,10 +36,11 @@ Manual real-library verification remains the main release blocker. `master.db` w
 - [ ] Real Rekordbox library manual verification.
 - [x] macOS release build artifacts generated.
 - [x] Final UI audit and redesign recommendations documented.
+- [x] Implemented phase 11 UI polish (empty states, panel layout, zero values, placeholder waveform).
 
 ## MVP phase checklist
 - [x] Phase 0 — Repo familiarization and status reconciliation.
-- [ ] Phase 1 — Stabilize current foundation and tag `v0.1.0`.
+- [ ] Phase 1 — Stabilize current foundation and tag `v0.1.0`. (Ready for manual verification)
 - [x] Phase 2 — Define MVP agent and playlist scope.
 - [x] Phase 3 — Implement missing read-only agent tools and playlist view.
 - [x] Phase 4 — Persist conversations.

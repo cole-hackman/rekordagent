@@ -18,10 +18,19 @@ export default function App() {
   const [filter, setFilter] = useState("");
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
-  const [showChanges, setShowChanges] = useState(false);
+  
+  type RightPanel = "details" | "chat" | "changes" | "none";
+  const [activeRightPanel, setActiveRightPanel] = useState<RightPanel>("none");
+
   const audio = useAudioPlayer(selectedTrack);
+
+  const handleTrackSelect = (track: Track) => {
+    setSelectedTrack(track);
+    if (activeRightPanel === "none") {
+      setActiveRightPanel("details");
+    }
+  };
 
   // Apply theme class to <html>
   useEffect(() => {
@@ -87,17 +96,26 @@ export default function App() {
           >
             Playlists
           </button>
+          {selectedTrack && (
+            <button
+              onClick={() => setActiveRightPanel((v) => v === "details" ? "none" : "details")}
+              aria-label={activeRightPanel === "details" ? "Hide details" : "Show details"}
+              className={`rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${activeRightPanel === "details" ? "text-indigo-400" : "text-zinc-400"}`}
+            >
+              Details
+            </button>
+          )}
           <button
-            onClick={() => setShowChanges((v) => !v)}
-            aria-label={showChanges ? "Hide changes" : "Show changes"}
-            className={`rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${showChanges ? "text-indigo-400" : "text-zinc-400"}`}
+            onClick={() => setActiveRightPanel((v) => v === "changes" ? "none" : "changes")}
+            aria-label={activeRightPanel === "changes" ? "Hide changes" : "Show changes"}
+            className={`rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${activeRightPanel === "changes" ? "text-indigo-400" : "text-zinc-400"}`}
           >
             Changes
           </button>
           <button
-            onClick={() => setShowChat((v) => !v)}
-            aria-label={showChat ? "Close agent" : "Open agent"}
-            className={`rounded-md p-1.5 transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${showChat ? "text-indigo-400" : "text-zinc-400"}`}
+            onClick={() => setActiveRightPanel((v) => v === "chat" ? "none" : "chat")}
+            aria-label={activeRightPanel === "chat" ? "Close agent" : "Open agent"}
+            className={`rounded-md p-1.5 transition-colors hover:bg-zinc-800 hover:text-zinc-100 ${activeRightPanel === "chat" ? "text-indigo-400" : "text-zinc-400"}`}
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
               <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
@@ -121,15 +139,22 @@ export default function App() {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col">
-          {showPlaylists && <PlaylistPanel libraryPath={libraryPath} />}
-          <TrackTable
-            libraryPath={libraryPath}
-            filter={filter}
-            selectedTrackId={selectedTrack?.id ?? null}
-            onSelect={setSelectedTrack}
-          />
+          {showPlaylists ? (
+            <PlaylistPanel
+              libraryPath={libraryPath}
+              selectedTrackId={selectedTrack?.id ?? null}
+              onSelectTrack={handleTrackSelect}
+            />
+          ) : (
+            <TrackTable
+              libraryPath={libraryPath}
+              filter={filter}
+              selectedTrackId={selectedTrack?.id ?? null}
+              onSelect={handleTrackSelect}
+            />
+          )}
         </div>
-        {selectedTrack && (
+        {activeRightPanel === "details" && selectedTrack && (
           <TrackDetailPanel
             track={selectedTrack}
             libraryPath={libraryPath}
@@ -137,16 +162,16 @@ export default function App() {
             onTogglePlay={audio.toggleCurrent}
           />
         )}
-        {showChat && (
+        {activeRightPanel === "chat" && (
           <ChatPanel
             libraryPath={libraryPath}
-            onClose={() => setShowChat(false)}
+            onClose={() => setActiveRightPanel("none")}
           />
         )}
-        {showChanges && (
+        {activeRightPanel === "changes" && (
           <DiffReviewPanel
             libraryPath={libraryPath}
-            onClose={() => setShowChanges(false)}
+            onClose={() => setActiveRightPanel("none")}
           />
         )}
       </div>

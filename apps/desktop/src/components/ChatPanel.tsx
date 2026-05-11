@@ -276,14 +276,23 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
       {/* Messages */}
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
         {messages.length === 0 && !error && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-xs text-zinc-600">
-            <span>Ask about your library…</span>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center px-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-indigo-400">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-6 w-6">
+                <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Agent Assistant</p>
+              <p className="mt-1 text-xs text-zinc-400">Ask questions about your library, or find missing metadata and duplicates.</p>
+              <p className="mt-2 text-[11px] text-zinc-600">Scan → Propose changes → Review → Export</p>
+            </div>
             <button
               onClick={handleAudit}
               disabled={isStreaming}
-              className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-indigo-700 hover:text-indigo-300 disabled:opacity-40"
+              className="mt-2 rounded-md bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-40"
             >
-              Audit library
+              Start Library Audit
             </button>
           </div>
         )}

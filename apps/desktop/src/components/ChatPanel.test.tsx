@@ -43,12 +43,12 @@ beforeEach(() => {
 describe("ChatPanel", () => {
   it("renders placeholder when no messages", () => {
     render(<ChatPanel {...defaultProps} />);
-    expect(screen.getByText("Ask about your library…")).toBeTruthy();
+    expect(screen.getByText("Agent Assistant")).toBeTruthy();
   });
 
   it("starts the guided audit workflow", () => {
     render(<ChatPanel {...defaultProps} />);
-    fireEvent.click(screen.getByRole("button", { name: "Audit library" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start Library Audit" }));
     expect(mockSendMessage).toHaveBeenCalledWith(
       expect.stringContaining("Audit missing or bad metadata"),
     );

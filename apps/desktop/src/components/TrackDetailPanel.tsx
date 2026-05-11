@@ -121,19 +121,26 @@ export function TrackDetailPanel({ track, libraryPath, isPlaying, onTogglePlay }
       </div>
 
       {/* Waveform placeholder */}
-      <div className="mx-4 mt-4 flex h-16 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900">
-        <span className="text-xs text-zinc-600">Waveform — Phase 1</span>
+      <div className="mx-4 mt-4 flex h-16 items-center justify-center relative overflow-hidden rounded-md border border-zinc-800/50 bg-zinc-900/30">
+        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+          <svg className="h-6 w-full px-8 text-zinc-500" preserveAspectRatio="none" viewBox="0 0 100 20">
+            <path d="M0,10 L5,15 L10,5 L15,18 L20,8 L25,12 L30,2 L35,16 L40,6 L45,14 L50,4 L55,17 L60,7 L65,13 L70,3 L75,15 L80,5 L85,19 L90,9 L95,14 L100,1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <span className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+          Audio Preview
+        </span>
       </div>
 
       {/* Metadata */}
       <div className="flex flex-col gap-1.5 p-4">
         <MetaRow label="Album" value={track.album} />
         <MetaRow label="Genre" value={track.genre} />
-        <MetaRow label="BPM" value={track.bpm != null ? track.bpm.toFixed(1) : null} />
+        <MetaRow label="BPM" value={track.bpm != null && track.bpm > 0 ? track.bpm.toFixed(1) : null} />
         <MetaRow label="Key" value={track.musical_key} />
         <MetaRow
           label="Duration"
-          value={track.duration_secs != null ? formatDuration(track.duration_secs) : null}
+          value={track.duration_secs != null && track.duration_secs > 0 ? formatDuration(track.duration_secs) : null}
         />
         <MetaRow
           label="Rating"
@@ -149,7 +156,7 @@ export function TrackDetailPanel({ track, libraryPath, isPlaying, onTogglePlay }
             ) : null
           }
         />
-        <MetaRow label="Year" value={track.release_year} />
+        <MetaRow label="Year" value={track.release_year != null && track.release_year > 0 ? track.release_year : null} />
         <MetaRow label="Plays" value={track.dj_play_count} />
         {track.comment && (
           <div className="mt-1">

@@ -16,3 +16,7 @@ cache = { path = "../cache" }
 changes = { path = "../changes" }
 scoring = { path = "../scoring" }
 classify = { path = "../classify" }
+
+[dev-dependencies]
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }
+tempfile = "3"

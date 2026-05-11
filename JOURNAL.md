@@ -285,3 +285,15 @@
   - Manual packaged-app verification against a real Rekordbox library.
   - Disposable-library Rekordbox XML import verification.
   - Deeper grouped diff UX and playlist mutation export tests.
+
+### Checkpoint — Release v0.1.0 Wrap-up
+- Shipped:
+  - Phase 1: Grouped Diff UX: Refactored `DiffReviewPanel.tsx` to group changes by target ID (track/playlist), and added interactive filters for `Proposed`, `Accepted`, `Rejected`, and `Exported` status counts.
+  - Phase 2: Playlist Export Tests: Refactored `export_accepted_changes` into a pure `generate_export_xml` function and added a comprehensive Rust backend test for `PlaylistRename`, `PlaylistCreate`, `PlaylistAddTrack`, and `PlaylistRemoveTrack` XML emission.
+  - Phase 4: Release Tagging: Prepared `v0.1.0` release notes in `docs/releases/v0.1.0.md` detailing the agent capabilities and UI state.
+- Verification:
+  - `pnpm test` passed: 88 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed.
+  - `cargo test --workspace` passed.
+- Next: manual verification against a real library and final `git tag v0.1.0` creation.

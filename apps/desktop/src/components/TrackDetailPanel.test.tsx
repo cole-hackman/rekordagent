@@ -106,8 +106,8 @@ describe("TrackDetailPanel", () => {
   });
 
   it("shows waveform placeholder", () => {
-    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
-    expect(screen.getByText("Waveform — Phase 1")).toBeInTheDocument();
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={() => {}} />);
+    expect(screen.getByText("Audio Preview")).toBeInTheDocument();
   });
 
   it("shows play button when not playing", () => {

@@ -35,7 +35,7 @@ const COLUMNS: ColumnDef<Track>[] = [
     meta: { align: "right" },
     cell: (info) => {
       const v = info.getValue<number | null>();
-      return v != null ? v.toFixed(1) : "—";
+      return v != null && v > 0 ? v.toFixed(1) : "—";
     },
   },
   {
