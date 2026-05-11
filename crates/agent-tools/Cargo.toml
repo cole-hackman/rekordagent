@@ -1,0 +1,17 @@
+[package]
+name = "agent-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+decks-core = { path = "../decks-core" }
+cache = { path = "../cache" }
+changes = { path = "../changes" }
+
+[dev-dependencies]
+rusqlite = { version = "0.34", features = ["bundled-sqlcipher-vendored-openssl"] }
+tempfile = "3"

@@ -16,6 +16,7 @@ members = [
     "crates/ranker",
     "crates/plugins",
     "crates/decks-core",
+    "crates/agent-tools",
     "apps/cli",
     "apps/desktop/src-tauri",
 ]
