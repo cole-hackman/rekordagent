@@ -11,6 +11,7 @@ let agentState = {
   error: null as string | null,
   sendMessage: mockSendMessage,
   clearMessages: mockClearMessages,
+  mode: "claude-cli" as import("../agent/useAgent").AgentMode,
 };
 
 vi.mock("../agent/useAgent", () => ({
@@ -26,6 +27,7 @@ beforeEach(() => {
     error: null,
     sendMessage: mockSendMessage,
     clearMessages: mockClearMessages,
+    mode: "claude-cli" as import("../agent/useAgent").AgentMode,
   };
   vi.clearAllMocks();
 });

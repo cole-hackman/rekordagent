@@ -68,7 +68,7 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
 }
 
 export function ChatPanel({ libraryPath, onClose }: Props) {
-  const { messages, isStreaming, error, sendMessage, clearMessages } =
+  const { messages, isStreaming, error, sendMessage, clearMessages, mode } =
     useAgent(libraryPath);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -104,7 +104,19 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
     <div className="flex h-full w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <span className="text-sm font-semibold text-zinc-100">Agent</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-zinc-100">Agent</span>
+          {mode === "claude-cli" && (
+            <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+              subscription
+            </span>
+          )}
+          {mode === "api-key" && (
+            <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
+              api key
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {messages.length > 0 && (
             <button

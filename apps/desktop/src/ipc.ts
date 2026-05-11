@@ -83,6 +83,20 @@ export async function deleteApiKey(service: string): Promise<void> {
   return invoke<void>("delete_api_key", { service });
 }
 
+// ── Claude CLI agent ─────────────────────────────────────────────────────────
+
+export async function claudeAvailable(): Promise<boolean> {
+  return invoke<boolean>("claude_available");
+}
+
+export async function chatWithClaude(
+  message: string,
+  sessionId: string | null,
+  eventName: string,
+): Promise<string> {
+  return invoke<string>("chat_with_claude", { message, sessionId, eventName });
+}
+
 // ── Agent tools ───────────────────────────────────────────────────────────────
 
 export async function librarySearch(
