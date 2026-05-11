@@ -10,6 +10,10 @@
 
 ## Library tools
 
+### Implemented Now
+
+The current chat panel exposes `library.search`, `library.list_playlists`, and `health.orphan_scan`. The full MVP read-only surface below is the implementation target before staged changes.
+
 ### `library.search`
 Search tracks by text query across title, artist, album, genre, comment.
 
@@ -26,7 +30,7 @@ Fetch full track details by ID.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `id: number` |
+| Parameters | `id: string` |
 | Returns | `Track` |
 | Idempotent | yes |
 | Side effects | none |
@@ -43,12 +47,23 @@ List all playlists and folders.
 | Side effects | none |
 | Cost | free |
 
+### `library.get_playlist`
+Fetch one playlist/folder and its ordered track entries.
+
+| Field | Value |
+|-------|-------|
+| Parameters | `id: string` |
+| Returns | `{ playlist: Playlist, tracks: Track[] }` |
+| Idempotent | yes |
+| Side effects | none |
+| Cost | free |
+
 ### `library.list_cues`
 List hot cues for a track.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_id: number` |
+| Parameters | `track_id: string` |
 | Returns | `HotCue[]` |
 | Idempotent | yes |
 | Side effects | none |
@@ -63,7 +78,7 @@ Trigger (or retrieve cached) BPM, key, and feature analysis for a track.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_id: number`, `force?: boolean` |
+| Parameters | `track_id: string`, `force?: boolean` |
 | Returns | `AudioFeatures` |
 | Idempotent | yes |
 | Side effects | writes to cache DB |
@@ -74,7 +89,7 @@ Return waveform data for rendering.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_id: number` |
+| Parameters | `track_id: string` |
 | Returns | `WaveformData` |
 | Idempotent | yes |
 | Side effects | none |
@@ -89,7 +104,7 @@ Look up track metadata on Discogs.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_id: number` |
+| Parameters | `track_id: string` |
 | Returns | `DiscogsResult` |
 | Idempotent | yes |
 | Side effects | network call, caches result |
@@ -100,7 +115,7 @@ Look up track metadata on MusicBrainz.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_id: number` |
+| Parameters | `track_id: string` |
 | Returns | `MusicBrainzResult` |
 | Idempotent | yes |
 | Side effects | network call, caches result |
@@ -115,7 +130,7 @@ Classify the genre of a track using the decision tree.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_id: number` |
+| Parameters | `track_id: string` |
 | Returns | `GenreClassification` |
 | Idempotent | yes |
 | Side effects | none |
@@ -126,7 +141,7 @@ Audit a playlist or the whole library for genre inconsistencies.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `playlist_id?: number` |
+| Parameters | `playlist_id?: string` |
 | Returns | `GenreAuditReport` |
 | Idempotent | yes |
 | Side effects | none |
@@ -178,7 +193,7 @@ Score a transition between two tracks.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `from_id: number`, `to_id: number` |
+| Parameters | `from_id: string`, `to_id: string` |
 | Returns | `TransitionScore` |
 | Idempotent | yes |
 | Side effects | none |
@@ -189,7 +204,7 @@ Build an optimal track sequence from a pool using beam search.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_ids: number[]`, `target_duration_min?: number` |
+| Parameters | `track_ids: string[]`, `target_duration_min?: number` |
 | Returns | `TrackSequence` |
 | Idempotent | yes |
 | Side effects | none |
@@ -226,7 +241,7 @@ Expand an existing track pool with similar tracks.
 
 | Field | Value |
 |-------|-------|
-| Parameters | `track_ids: number[]`, `limit?: number` |
+| Parameters | `track_ids: string[]`, `limit?: number` |
 | Returns | `Track[]` |
 | Idempotent | yes |
 | Side effects | none |

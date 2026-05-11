@@ -220,3 +220,13 @@
   - 71 vitest tests pass; `pnpm typecheck` + `pnpm lint` clean; `cargo fmt --all` applied.
 - Next: Phase 1 demo — build on macOS, open with real library, verify audio preview + agent chat; tag v0.1.0.
 - Blockers: none.
+
+## Session 10 — 2026-05-11
+
+### Plan
+- Task: implement the full working MVP plan, starting with Phase 0 documentation reconciliation.
+- Goals:
+  1. Make `STATUS.md`, `README.md`, and `docs/*` reflect the actual implementation state.
+  2. Create `docs/MVP_PLAN.md`, `docs/MANUAL_TEST_PLAN.md`, and `docs/UI_AUDIT.md` as source-of-truth tracking files.
+  3. Run `cargo test --workspace`, `pnpm test`, `pnpm typecheck`, and `pnpm lint` after the docs-only phase.
+- Scope note: first checkpoint is docs-only. Feature implementation starts after the project state is accurately recorded.
