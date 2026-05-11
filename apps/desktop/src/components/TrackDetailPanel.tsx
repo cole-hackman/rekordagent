@@ -1,4 +1,5 @@
 import { useTrackCues } from "../hooks/useTrackCues";
+import { WaveformDisplay } from "./WaveformDisplay";
 import type { Track, HotCue, CueKind } from "../types";
 
 const STAR_RATINGS = [0, 1, 2, 3, 4, 5] as const;
@@ -120,9 +121,13 @@ export function TrackDetailPanel({ track, libraryPath, isPlaying, onTogglePlay }
         </div>
       </div>
 
-      {/* Waveform placeholder */}
-      <div className="mx-4 mt-4 flex h-16 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900">
-        <span className="text-xs text-zinc-600">Waveform — Phase 1</span>
+      {/* Waveform */}
+      <div className="mx-4 mt-4">
+        <WaveformDisplay
+          audioPath={track.folder_path}
+          cueTimestampsMs={sortedCues.map((c) => c.in_msec ?? 0)}
+          isPlaying={isPlaying}
+        />
       </div>
 
       {/* Metadata */}

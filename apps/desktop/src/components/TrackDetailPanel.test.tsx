@@ -6,6 +6,11 @@ import type { Track, HotCue } from "../types";
 vi.mock("../hooks/useTrackCues");
 import { useTrackCues } from "../hooks/useTrackCues";
 
+// WaveSurfer.js is a DOM/canvas library that cannot run in jsdom.
+vi.mock("./WaveformDisplay", () => ({
+  WaveformDisplay: () => <div data-testid="waveform" />,
+}));
+
 import { TrackDetailPanel } from "./TrackDetailPanel";
 
 const BASE_TRACK: Track = {
@@ -105,9 +110,9 @@ describe("TrackDetailPanel", () => {
     expect(screen.getByLabelText("3 stars")).toBeInTheDocument();
   });
 
-  it("shows waveform placeholder", () => {
+  it("renders waveform component", () => {
     render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
-    expect(screen.getByText("Waveform — Phase 1")).toBeInTheDocument();
+    expect(screen.getByTestId("waveform")).toBeInTheDocument();
   });
 
   it("shows play button when not playing", () => {
