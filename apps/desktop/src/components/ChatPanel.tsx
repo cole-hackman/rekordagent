@@ -5,6 +5,10 @@ import type { AssistantMessage, ToolResultBlock } from "../agent/types";
 interface Props {
   libraryPath: string;
   onClose: () => void;
+  /** When set, the panel will auto-send this prompt and call onPromptConsumed.
+   *  Used by the Audit view to start a scan from outside the chat. */
+  pendingPrompt?: string | null;
+  onPromptConsumed?: () => void;
 }
 
 function ToolCallCard({
@@ -20,16 +24,16 @@ function ToolCallCard({
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join(", ");
   return (
-    <div className="my-1 flex items-start gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-400">
+    <div className="my-1 flex items-start gap-1.5 rounded-md border border-edge-strong bg-surface px-2.5 py-1.5 text-xs text-ink-secondary">
       <svg
         viewBox="0 0 16 16"
         fill="currentColor"
-        className="mt-px h-3 w-3 shrink-0 text-indigo-400"
+        className="mt-px h-3 w-3 shrink-0 text-accent-hover"
       >
         <path d="M5.433.755a.75.75 0 01.832.27l1.5 2a.75.75 0 01-.164.999L6 5.017l.002.017a7.496 7.496 0 003.96 3.961l.017.002 1.993-1.601a.75.75 0 01.999-.164l2 1.5a.75.75 0 01.27.832l-.75 2.5a.75.75 0 01-.72.536A13.998 13.998 0 010 .75a.75.75 0 01.536-.72l2.5-.75z" />
       </svg>
-      <span className="font-medium text-zinc-300">{label}</span>
-      {params && <span className="ml-1 truncate text-zinc-500">{params}</span>}
+      <span className="font-medium text-ink-secondary">{label}</span>
+      {params && <span className="ml-1 truncate text-ink-muted">{params}</span>}
     </div>
   );
 }
@@ -47,7 +51,7 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
           return (
             <p
               key={i}
-              className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-200"
+              className="whitespace-pre-wrap text-sm leading-relaxed text-ink"
             >
               {block.text}
             </p>
@@ -61,7 +65,7 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
         return null;
       })}
       {!hasContent && !hasToolCalls && (
-        <div className="h-4 w-4 animate-spin rounded-full border border-zinc-700 border-t-indigo-400" />
+        <div className="h-4 w-4 animate-spin rounded-full border border-edge-strong border-t-accent-hover" />
       )}
     </div>
   );
@@ -145,14 +149,19 @@ function ToolResultSummary({ result }: { result: ToolResultBlock }) {
   }
 
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm">
-      <div className="font-medium text-zinc-200">{title}</div>
-      {detail && <div className="mt-0.5 text-xs text-zinc-500">{detail}</div>}
+    <div className="rounded-md border border-edge bg-surface px-3 py-2 text-sm">
+      <div className="font-medium text-ink">{title}</div>
+      {detail && <div className="mt-0.5 text-xs text-ink-muted">{detail}</div>}
     </div>
   );
 }
 
-export function ChatPanel({ libraryPath, onClose }: Props) {
+export function ChatPanel({
+  libraryPath,
+  onClose,
+  pendingPrompt,
+  onPromptConsumed,
+}: Props) {
   const {
     messages,
     conversations,
@@ -172,6 +181,13 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    if (isStreaming) return;
+    void sendMessage(pendingPrompt);
+    onPromptConsumed?.();
+  }, [pendingPrompt, isStreaming, sendMessage, onPromptConsumed]);
 
   const resizeTextarea = useCallback(() => {
     const el = textareaRef.current;
@@ -203,17 +219,17 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
   };
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
+    <div className="flex h-full w-80 shrink-0 flex-col border-l border-edge bg-base animate-[slideInRight_150ms_ease-out]">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-edge px-4 py-2">
         <div className="min-w-0 flex-1">
-          <span className="text-sm font-semibold text-zinc-100">Agent</span>
+          <span className="text-sm font-semibold text-ink">Agent</span>
           {conversations.length > 0 && (
             <select
               aria-label="Conversation"
               value={activeConversationId ?? ""}
               onChange={(event) => void loadConversation(event.target.value)}
-              className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 focus:border-indigo-500 focus:outline-none"
+              className="mt-1 w-full rounded-md border border-edge bg-surface px-2 py-1 text-xs text-ink-secondary focus:border-accent focus:outline-none"
             >
               <option value="" disabled>
                 Select conversation
@@ -231,7 +247,7 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
             onClick={newConversation}
             aria-label="New conversation"
             title="New conversation"
-            className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+            className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
               <path d="M8 1.75a.75.75 0 01.75.75v4.75h4.75a.75.75 0 010 1.5H8.75v4.75a.75.75 0 01-1.5 0V8.75H2.5a.75.75 0 010-1.5h4.75V2.5A.75.75 0 018 1.75z" />
@@ -242,7 +258,7 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
               onClick={clearMessages}
               aria-label="Clear chat"
               title="Clear conversation"
-              className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+              className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
                 <path d="M2.5 1a1 1 0 00-1 1v1a1 1 0 001 1H3v9a2 2 0 002 2h6a2 2 0 002-2V4h.5a1 1 0 001-1V2a1 1 0 00-1-1H10a1 1 0 00-1-1H7a1 1 0 00-1 1H2.5zm3 4a.5.5 0 011 0v7a.5.5 0 01-1 0V5zm3 0a.5.5 0 011 0v7a.5.5 0 01-1 0V5z" />
@@ -254,7 +270,7 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
               onClick={() => void deleteActiveConversation()}
               aria-label="Delete conversation"
               title="Delete conversation"
-              className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+              className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
                 <path d="M6.5 1h3a1 1 0 011 1v1h3a.75.75 0 010 1.5h-.5v8A2.5 2.5 0 0110.5 15h-5A2.5 2.5 0 013 12.5v-8h-.5a.75.75 0 010-1.5h3V2a1 1 0 011-1zm1 2h1V2.5h-1V3zm-3 1.5v8A1 1 0 005.5 13.5h5a1 1 0 001-1v-8h-7z" />
@@ -264,7 +280,7 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
           <button
             onClick={onClose}
             aria-label="Close agent panel"
-            className="rounded p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+            className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
               <path d="M3.22 3.22a.75.75 0 011.06 0L8 6.94l3.72-3.72a.75.75 0 111.06 1.06L9.06 8l3.72 3.72a.75.75 0 11-1.06 1.06L8 9.06l-3.72 3.72a.75.75 0 01-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 010-1.06z" />
@@ -277,20 +293,20 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
         {messages.length === 0 && !error && (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center px-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-indigo-400">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-edge bg-surface text-accent-hover">
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-6 w-6">
                 <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-zinc-200">Agent Assistant</p>
-              <p className="mt-1 text-xs text-zinc-400">Ask questions about your library, or find missing metadata and duplicates.</p>
-              <p className="mt-2 text-[11px] text-zinc-600">Scan → Propose changes → Review → Export</p>
+              <p className="text-sm font-medium text-ink">Agent Assistant</p>
+              <p className="mt-1 text-xs text-ink-secondary">Ask questions about your library, or find missing metadata and duplicates.</p>
+              <p className="mt-2 text-[11px] text-ink-faint">Scan → Propose changes → Review → Export</p>
             </div>
             <button
               onClick={handleAudit}
               disabled={isStreaming}
-              className="mt-2 rounded-md bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-40"
+              className="mt-2 rounded-md bg-elevated px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-hover disabled:opacity-40"
             >
               Start Library Audit
             </button>
@@ -301,7 +317,7 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
           if (msg.role === "user") {
             return (
               <div key={i} className="flex justify-end">
-                <div className="max-w-[85%] rounded-2xl bg-indigo-600 px-3 py-2 text-sm text-white">
+                <div className="max-w-[85%] rounded-2xl bg-accent-strong px-3 py-2 text-sm text-white">
                   {msg.text}
                 </div>
               </div>
@@ -336,7 +352,7 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
       </div>
 
       {/* Input */}
-      <div className="shrink-0 border-t border-zinc-800 p-3">
+      <div className="shrink-0 border-t border-edge p-3">
         <div className="flex items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -348,13 +364,13 @@ export function ChatPanel({ libraryPath, onClose }: Props) {
             onKeyDown={handleKeyDown}
             placeholder="Message…"
             rows={1}
-            className="flex-1 resize-none rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
+            className="flex-1 resize-none rounded-md border border-edge-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
           />
           <button
             onClick={handleSend}
             disabled={isStreaming || input.trim() === ""}
             aria-label="Send message"
-            className="shrink-0 rounded-md bg-indigo-600 p-2 text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-md bg-accent-strong p-2 text-white transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isStreaming ? (
               <div className="h-4 w-4 animate-spin rounded-full border border-white/30 border-t-white" />

@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -9,6 +9,9 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLibrary } from "../hooks/useLibrary";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { EmptyState } from "./EmptyState";
+import { ErrorPanel } from "./ErrorPanel";
 import type { Track } from "../types";
 
 const ROW_H = 36;
@@ -25,7 +28,7 @@ const COLUMNS: ColumnDef<Track>[] = [
     header: "Artist",
     size: 180,
     cell: (info) => (
-      <span className="truncate text-zinc-400">{info.getValue<string | null>() ?? "—"}</span>
+      <span className="truncate text-ink-secondary">{info.getValue<string | null>() ?? "—"}</span>
     ),
   },
   {
@@ -63,7 +66,7 @@ const COLUMNS: ColumnDef<Track>[] = [
     header: "Genre",
     size: 130,
     cell: (info) => (
-      <span className="truncate text-zinc-400">{info.getValue<string | null>() ?? "—"}</span>
+      <span className="truncate text-ink-secondary">{info.getValue<string | null>() ?? "—"}</span>
     ),
   },
 ];
@@ -110,28 +113,57 @@ export function TrackTable({ libraryPath, filter, selectedTrackId, onSelect }: P
     overscan: 20,
   });
 
+  const moveSelection = useCallback(
+    (delta: number) => {
+      if (rows.length === 0) return;
+      const currentIdx = selectedTrackId
+        ? rows.findIndex((r) => r.original.id === selectedTrackId)
+        : -1;
+      const nextIdx =
+        currentIdx === -1
+          ? delta > 0
+            ? 0
+            : rows.length - 1
+          : Math.max(0, Math.min(rows.length - 1, currentIdx + delta));
+      const target = rows[nextIdx];
+      if (target) {
+        onSelect(target.original);
+        virtualizer.scrollToIndex(nextIdx, { align: "auto" });
+      }
+    },
+    [rows, selectedTrackId, onSelect, virtualizer],
+  );
+
+  useKeyboardShortcuts(
+    useMemo(
+      () => [
+        { key: "j", handler: () => moveSelection(1) },
+        { key: "k", handler: () => moveSelection(-1) },
+        { key: "arrowdown", handler: () => moveSelection(1) },
+        { key: "arrowup", handler: () => moveSelection(-1) },
+      ],
+      [moveSelection],
+    ),
+  );
+
   const virtualItems = virtualizer.getVirtualItems();
 
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-700 border-t-indigo-400" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-edge-strong border-t-accent-hover" />
       </div>
     );
   }
 
   if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-red-400">
-        Failed to load library: {error.message}
-      </div>
-    );
+    return <ErrorPanel title="Failed to load library" error={error} />;
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Column headers */}
-      <div className="flex border-b border-zinc-800 bg-zinc-900 text-xs font-medium uppercase tracking-wider text-zinc-500 select-none">
+      <div className="flex border-b border-edge bg-surface text-xs font-medium uppercase tracking-wider text-ink-muted select-none">
         {table.getFlatHeaders().map((header) => {
           const meta = header.column.columnDef.meta as { align?: string } | undefined;
           const align = meta?.align;
@@ -141,7 +173,7 @@ export function TrackTable({ libraryPath, filter, selectedTrackId, onSelect }: P
               key={header.id}
               style={{ width: header.getSize(), minWidth: header.getSize() }}
               className={[
-                "flex cursor-pointer items-center gap-1 px-3 py-2 hover:text-zinc-300",
+                "flex cursor-pointer items-center gap-1 px-3 py-2 hover:text-ink-secondary",
                 align === "right" ? "justify-end" : align === "center" ? "justify-center" : "",
               ].join(" ")}
               onClick={header.column.getToggleSortingHandler()}
@@ -174,10 +206,10 @@ export function TrackTable({ libraryPath, filter, selectedTrackId, onSelect }: P
                   alignItems: "center",
                 }}
                 className={[
-                  "cursor-pointer border-b border-zinc-800/50 text-sm",
+                  "cursor-pointer border-b border-edge/50 text-sm",
                   row.original.id === selectedTrackId
-                    ? "bg-indigo-900/40 hover:bg-indigo-900/50"
-                    : "hover:bg-zinc-800/60",
+                    ? "bg-accent-dim/40 hover:bg-accent-dim/50"
+                    : "hover:bg-elevated/60",
                 ].join(" ")}
                 onClick={() => onSelect(row.original)}
               >
@@ -195,9 +227,9 @@ export function TrackTable({ libraryPath, filter, selectedTrackId, onSelect }: P
                       className={[
                         "px-3",
                         align === "right"
-                          ? "text-right tabular-nums"
+                          ? "text-right font-mono tabular-nums text-[13px]"
                           : align === "center"
-                            ? "text-center"
+                            ? "text-center font-mono tabular-nums text-[13px]"
                             : "",
                       ].join(" ")}
                     >
@@ -211,7 +243,19 @@ export function TrackTable({ libraryPath, filter, selectedTrackId, onSelect }: P
         </div>
 
         {rows.length === 0 && (
-          <p className="p-6 text-center text-sm text-zinc-500">No tracks found.</p>
+          <EmptyState
+            icon={
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-5 w-5">
+                <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
+              </svg>
+            }
+            title={filter ? "No tracks match your filter" : "Library is empty"}
+            description={
+              filter
+                ? `Nothing in this library matches "${filter}". Try a shorter or different query.`
+                : "Your Rekordbox library exists, but no tracks were found. Add tracks in Rekordbox and re-open this app."
+            }
+          />
         )}
       </div>
     </div>

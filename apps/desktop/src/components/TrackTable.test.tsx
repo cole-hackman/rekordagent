@@ -127,7 +127,9 @@ describe("TrackTable", () => {
       <TrackTable libraryPath="/tmp/master.db" filter="zzznomatch" selectedTrackId={null} onSelect={vi.fn()} />,
       { wrapper },
     );
-    expect(screen.getByText("No tracks found.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No tracks match your filter"),
+    ).toBeInTheDocument();
   });
 
   it("shows column headers", () => {
