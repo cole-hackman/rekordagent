@@ -23,7 +23,7 @@ export async function listTracks(path: string): Promise<Track[]> {
 
 export async function getTrackCues(
   path: string,
-  trackId: number,
+  trackId: string,
 ): Promise<HotCue[]> {
   return invoke<HotCue[]>("get_track_cues", { path, trackId });
 }

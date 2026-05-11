@@ -1,34 +1,34 @@
 CREATE TABLE IF NOT EXISTS djmdArtist (
-    ID      INTEGER PRIMARY KEY,
+    ID      TEXT PRIMARY KEY,
     Name    TEXT,
     SearchStr TEXT
 );
 
 CREATE TABLE IF NOT EXISTS djmdAlbum (
-    ID              INTEGER PRIMARY KEY,
+    ID              TEXT PRIMARY KEY,
     Name            TEXT,
-    AlbumArtistID   INTEGER,
+    AlbumArtistID   TEXT,
     SearchStr       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS djmdGenre (
-    ID   INTEGER PRIMARY KEY,
+    ID   TEXT PRIMARY KEY,
     Name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS djmdKey (
-    ID        INTEGER PRIMARY KEY,
+    ID        TEXT PRIMARY KEY,
     ScaleName TEXT,
     Seq       INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS djmdContent (
-    ID                 INTEGER PRIMARY KEY,
+    ID                 TEXT PRIMARY KEY,
     Title              TEXT,
-    ArtistID           INTEGER,
-    AlbumID            INTEGER,
-    GenreID            INTEGER,
-    KeyID              INTEGER,
+    ArtistID           TEXT,
+    AlbumID            TEXT,
+    GenreID            TEXT,
+    KeyID              TEXT,
     BPM                INTEGER,
     Length             INTEGER,
     Rating             INTEGER,
@@ -44,23 +44,23 @@ CREATE TABLE IF NOT EXISTS djmdContent (
 );
 
 CREATE TABLE IF NOT EXISTS djmdPlaylist (
-    ID        INTEGER PRIMARY KEY,
+    ID        TEXT PRIMARY KEY,
     Seq       INTEGER,
     Name      TEXT,
     Attribute INTEGER DEFAULT 0,
-    ParentID  INTEGER
+    ParentID  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS djmdSongPlaylist (
-    ID         INTEGER PRIMARY KEY,
-    PlaylistID INTEGER,
-    ContentID  INTEGER,
+    ID         TEXT PRIMARY KEY,
+    PlaylistID TEXT,
+    ContentID  TEXT,
     TrackNo    INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS djmdCue (
-    ID        INTEGER PRIMARY KEY,
-    ContentID INTEGER,
+    ID        TEXT PRIMARY KEY,
+    ContentID TEXT,
     InMsec    INTEGER,
     OutMsec   INTEGER,
     Kind      INTEGER DEFAULT 0,

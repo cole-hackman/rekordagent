@@ -22,7 +22,7 @@ pub fn all(conn: &Connection) -> Result<Vec<Playlist>> {
         .map_err(Into::into)
 }
 
-pub fn entries(conn: &Connection, playlist_id: i64) -> Result<Vec<PlaylistEntry>> {
+pub fn entries(conn: &Connection, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
     let mut stmt = conn.prepare(
         "SELECT PlaylistID, ContentID, TrackNo
          FROM djmdSongPlaylist
@@ -79,8 +79,8 @@ mod tests {
     fn playlist_entries_ordered() {
         let path = make_db();
         let conn = create_test_db(&path).unwrap();
-        // playlist ID 2 has 2 entries in seed
-        let entries = entries(&conn, 2).unwrap();
+        // playlist ID "2" has 2 entries in seed
+        let entries = entries(&conn, "2").unwrap();
         assert_eq!(entries.len(), 2);
         assert!(entries[0].track_no <= entries[1].track_no);
     }
@@ -89,7 +89,7 @@ mod tests {
     fn entries_empty_playlist() {
         let path = make_db();
         let conn = create_test_db(&path).unwrap();
-        let entries = entries(&conn, 9999).unwrap();
+        let entries = entries(&conn, "9999").unwrap();
         assert!(entries.is_empty());
     }
 }

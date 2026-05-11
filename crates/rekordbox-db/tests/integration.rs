@@ -60,7 +60,7 @@ fn track_bpm_converted_correctly() {
 #[test]
 fn track_by_id_found() {
     let (_p, db) = make_fixture_db();
-    let t = db.track_by_id(1).expect("query").expect("row");
+    let t = db.track_by_id("1").expect("query").expect("row");
     assert_eq!(t.title, "Test Track Alpha");
     assert_eq!(t.artist.as_deref(), Some("Artist One"));
     assert_eq!(t.genre.as_deref(), Some("Techno"));
@@ -70,7 +70,7 @@ fn track_by_id_found() {
 #[test]
 fn track_by_id_missing() {
     let (_p, db) = make_fixture_db();
-    assert!(db.track_by_id(9999).expect("query").is_none());
+    assert!(db.track_by_id("9999").expect("query").is_none());
 }
 
 #[test]
@@ -116,16 +116,16 @@ fn playlist_kind_regular() {
 #[test]
 fn playlist_entries_for_techno_set() {
     let (_p, db) = make_fixture_db();
-    let entries = db.playlist_entries(2).expect("entries");
+    let entries = db.playlist_entries("2").expect("entries");
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].content_id, 1);
-    assert_eq!(entries[1].content_id, 2);
+    assert_eq!(entries[0].content_id, "1");
+    assert_eq!(entries[1].content_id, "2");
 }
 
 #[test]
 fn playlist_entries_empty() {
     let (_p, db) = make_fixture_db();
-    assert!(db.playlist_entries(9999).expect("entries").is_empty());
+    assert!(db.playlist_entries("9999").expect("entries").is_empty());
 }
 
 // ── Cue queries ────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ fn playlist_entries_empty() {
 #[test]
 fn hot_cues_for_track_ordered_by_position() {
     let (_p, db) = make_fixture_db();
-    let cues = db.hot_cues_for_track(1).expect("cues");
+    let cues = db.hot_cues_for_track("1").expect("cues");
     assert_eq!(cues.len(), 2);
     assert!(cues[0].in_msec <= cues[1].in_msec);
 }
@@ -141,7 +141,7 @@ fn hot_cues_for_track_ordered_by_position() {
 #[test]
 fn cue_kinds_parsed_correctly() {
     let (_p, db) = make_fixture_db();
-    let cues = db.hot_cues_for_track(1).expect("cues");
+    let cues = db.hot_cues_for_track("1").expect("cues");
     assert_eq!(cues[0].kind, CueKind::MemoryCue);
     assert_eq!(cues[1].kind, CueKind::HotCue(1));
 }
@@ -156,7 +156,7 @@ fn all_hot_cues_total_count() {
 #[test]
 fn cues_for_unknown_track_empty() {
     let (_p, db) = make_fixture_db();
-    assert!(db.hot_cues_for_track(9999).expect("cues").is_empty());
+    assert!(db.hot_cues_for_track("9999").expect("cues").is_empty());
 }
 
 // ── ANLZ beat grid ─────────────────────────────────────────────────────────

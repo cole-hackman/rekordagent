@@ -13,7 +13,7 @@ vi.mock("../ipc", () => ({
 import { playTrack, pauseAudio, resumeAudio } from "../ipc";
 
 const TRACK: Track = {
-  id: 1,
+  id: "1",
   title: "Test",
   artist: null,
   album: null,
