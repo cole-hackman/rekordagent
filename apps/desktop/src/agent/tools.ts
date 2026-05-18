@@ -1,15 +1,18 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import {
   librarySearch,
+  libraryStageIntroCues,
   listPlaylists,
   healthOrphanScan,
   getTrack,
   getPlaylist,
   getTrackCues,
   healthDuplicateScan,
+  healthFuzzyDuplicateScan,
   healthBrokenLinkScan,
   stageChange,
   listChanges,
+  relocateScan,
 } from "../ipc";
 import type { ChangeKind, NewStagedChange, ToolPayload } from "./types";
 
@@ -105,6 +108,16 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "health__fuzzy_duplicate_scan",
+    description:
+      "Find likely-duplicate candidates by collapsing remix/feature/parenthetical markers from title and artist. Treat results as candidates needing manual review.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "health__broken_link_scan",
     description:
       "Find tracks with missing or suspicious metadata such as missing artist, BPM, key, or genre.",
@@ -155,6 +168,35 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "relocate__scan",
+    description:
+      "Find relocation candidates for broken/missing files by scanning root directories.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        search_roots: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of absolute directory paths to scan for missing music files.",
+        },
+      },
+      required: ["search_roots"],
+    },
+  },
+  {
+    name: "relocate__apply",
+    description:
+      "Stage a folder_path update for a broken file.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        track_id: { type: "string", description: "Rekordbox track ID" },
+        new_path: { type: "string", description: "The new absolute path to the audio file." },
+      },
+      required: ["track_id", "new_path"],
+    },
+  },
 ];
 
 export async function executeTool(
@@ -167,7 +209,12 @@ export async function executeTool(
       const query = String(input.query ?? "");
       const limit = typeof input.limit === "number" ? input.limit : 50;
       const tracks = await librarySearch(libraryPath, query, limit);
-      return { tool: "library.search", tracks, query };
+      return { tool: "library.search", query, tracks };
+    }
+    case "library__bulk_add_intro_cues": {
+      const trackIds = (input.track_ids as string[]) ?? [];
+      const changes = await libraryStageIntroCues(libraryPath, trackIds);
+      return { tool: "library.stage_intro_cues", changes };
     }
     case "library__list_playlists": {
       const playlists = await listPlaylists(libraryPath);
@@ -196,6 +243,10 @@ export async function executeTool(
       const groups = await healthDuplicateScan(libraryPath);
       return { tool: "health.duplicate_scan", groups };
     }
+    case "health__fuzzy_duplicate_scan": {
+      const groups = await healthFuzzyDuplicateScan(libraryPath);
+      return { tool: "health.fuzzy_duplicate_scan", groups };
+    }
     case "health__broken_link_scan": {
       const report = await healthBrokenLinkScan(libraryPath);
       return { tool: "health.broken_link_scan", report };
@@ -222,6 +273,26 @@ export async function executeTool(
     case "staging__list_changes": {
       const changes = await listChanges(libraryPath);
       return { tool: "staging.list_changes", changes };
+    }
+    case "relocate__scan": {
+      const searchRoots = (input.search_roots as string[]) ?? [];
+      const candidates = await relocateScan(libraryPath, searchRoots);
+      return { tool: "relocate.scan", candidates };
+    }
+    case "relocate__apply": {
+      const trackId = String(input.track_id ?? "");
+      const newPath = String(input.new_path ?? "");
+      const change = await stageChange({
+        library_path: libraryPath,
+        kind: "TrackMetadataEdit",
+        target_id: trackId,
+        field: "folder_path",
+        old_value: null,
+        new_value: newPath,
+        reason: "Relocated missing file via agent",
+        confidence: 1.0,
+      });
+      return { tool: "relocate.apply", change };
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

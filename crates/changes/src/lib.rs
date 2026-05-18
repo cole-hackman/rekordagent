@@ -18,6 +18,7 @@ pub enum ChangeStatus {
 pub enum ChangeKind {
     TrackMetadataEdit,
     CueMetadataEdit,
+    TrackAddCue,
     PlaylistCreate,
     PlaylistRename,
     PlaylistDelete,
@@ -182,11 +183,16 @@ pub fn unix_timestamp() -> i64 {
 }
 
 fn new_change_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or_default();
-    format!("change_{nanos}")
+    // A process-local atomic disambiguates IDs even when two calls land in the
+    // same nanosecond — which happens in tight staging loops on fast hardware.
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("change_{nanos}_{n}")
 }
 
 #[cfg(test)]
@@ -263,6 +269,54 @@ mod tests {
         assert_eq!(accepted.len(), 1);
         assert_eq!(accepted[0].kind, ChangeKind::TrackMetadataEdit);
         assert_eq!(manager.list()[1].status, ChangeStatus::Proposed);
+    }
+
+    #[test]
+    fn accept_returns_not_found_for_unknown_id() {
+        let mut manager = ChangeManager::new();
+        let err = manager.accept("does-not-exist").unwrap_err();
+        assert_eq!(err, ChangeError::NotFound("does-not-exist".to_owned()));
+    }
+
+    #[test]
+    fn track_add_cue_is_not_a_safe_batch_kind() {
+        // TrackAddCue mutates cue state on a track — it should require explicit accept,
+        // not be swept up by accept_all_safe. Guard the safety set so future additions
+        // don't accidentally include it.
+        assert!(!is_safe_batch_kind(&ChangeKind::TrackAddCue));
+        assert!(!is_safe_batch_kind(&ChangeKind::PlaylistCreate));
+        assert!(!is_safe_batch_kind(&ChangeKind::PlaylistDelete));
+        assert!(!is_safe_batch_kind(&ChangeKind::PlaylistAddTrack));
+        assert!(!is_safe_batch_kind(&ChangeKind::PlaylistRemoveTrack));
+        assert!(!is_safe_batch_kind(&ChangeKind::PlaylistReorderTrack));
+        assert!(!is_safe_batch_kind(&ChangeKind::PlaylistRename));
+        assert!(is_safe_batch_kind(&ChangeKind::TrackMetadataEdit));
+        assert!(is_safe_batch_kind(&ChangeKind::CueMetadataEdit));
+    }
+
+    #[test]
+    fn staged_changes_have_unique_ids() {
+        let mut manager = ChangeManager::new();
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..50 {
+            let c = manager.stage(track_edit());
+            assert!(ids.insert(c.id.clone()), "duplicate id: {}", c.id);
+        }
+    }
+
+    #[test]
+    fn rejected_changes_cannot_be_re_accepted_or_exported() {
+        let mut manager = ChangeManager::new();
+        let c = manager.stage(track_edit());
+        manager.reject(&c.id).unwrap();
+        assert!(matches!(
+            manager.accept(&c.id),
+            Err(ChangeError::InvalidTransition { .. })
+        ));
+        assert!(matches!(
+            manager.mark_exported(&c.id),
+            Err(ChangeError::InvalidTransition { .. })
+        ));
     }
 
     #[test]

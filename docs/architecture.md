@@ -17,7 +17,7 @@
 │  Rust core  (crates/*)                                  │
 │  rekordbox-db · rekordbox-xml · audio-analysis          │
 │  audio-tags · enrichment · classify · scoring           │
-│  changes · cache · embeddings · prodjlink               │
+│  changes · cache · embeddings                           │
 │  ranker · plugins · decks-core (facade)                 │
 └─────────────────────────────────────────────────────────┘
 ```

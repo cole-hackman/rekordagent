@@ -59,7 +59,6 @@ A task is done when **all** of these are true:
 
 1. A real **GUI** with library browser, waveform preview, drag-and-drop set timeline, and inline diff review of staged changes.
 1. **Audio embedding similarity search** (CLAP, local) — “tracks that sound like this,” and natural-language queries like “dark hypnotic dub-techno around 130”.
-1. **Live deck integration** via Pioneer PRO DJ LINK — the agent sees what’s playing and suggests next tracks in real time.
 1. **Local-first model routing** — Claude/GPT in the cloud for hard reasoning, Ollama-hosted local models for cheap calls.
 1. **A learned transition ranker** that personalizes to the user’s accept/reject history.
 1. **A user-extensible plugin tool system** so users (or the agent) can register Python/JS scripts as agent tools without a release.
@@ -102,7 +101,6 @@ What we replace:
 What we add (new crates):
 
 - `crates/embeddings` — CLAP audio + text embeddings, ONNX runtime, vector search via sqlite-vec.
-- `crates/prodjlink` — Pioneer PRO DJ LINK packet listener for live deck state.
 - `crates/agent` — model-agnostic agent loop with tool dispatch, streaming, and replay (TS, in `apps/desktop/src/agent`).
 - `crates/ranker` — learned pairwise transition ranker (gradient-boosted; train offline, infer online).
 - `crates/plugins` — sandboxed user plugin host.
@@ -249,18 +247,7 @@ Goal: real audio similarity, no genre tags required.
 - [ ] Pool builder upgrade: pools can be seeded by similarity, not just by metadata filters.
 - [ ] **Demo:** “find me 30 dark, hypnotic, dub-influenced techno tracks around 130 BPM” → real results, no genre tag dependency.
 
-### Phase 5 — live deck integration (target: v0.5.0)
-
-Goal: the agent watches your decks and suggests in real time.
-
-- [ ] `crates/prodjlink`: UDP listener; parse status, beat, cdj packets; expose a stream of deck-state events.
-- [ ] “Live mode” UI: shows currently loaded deck(s), playhead position, mixer state.
-- [ ] Real-time next-track suggestions update as the deck plays; sortable by harmonic compatibility, energy, similarity.
-- [ ] Accept/reject buttons on every suggestion; logged for the ranker.
-- [ ] Soft-real-time guarantees: suggestions update within 1s of deck state change.
-- [ ] **Demo:** plug in a CDJ-3000 (or run [Beat Link Trigger](https://github.com/Deep-Symmetry/beat-link-trigger) for testing), play a track, see suggestions update.
-
-### Phase 6 — learned ranker, plugins, polish (target: v1.0.0)
+### Phase 5 — learned ranker, plugins, polish (target: v1.0.0)
 
 - [ ] `crates/ranker`: feature extraction from track-pair (BPM ratio, key Camelot distance, energy delta, embedding cosine, time-of-day, recent-skip count, etc.). Pairwise LightGBM (LambdaRank). Training script reads accept/reject log; inference in Rust.
 - [ ] Ranker A/B: user can compare hand-tuned scoring vs. learned ranker side-by-side.
@@ -295,8 +282,7 @@ Tool categories (initial):
 - **Pools** — find-pool, expand-pool.
 - **Staging** — list-changes, accept-change, reject-change, export-xml.
 - **Embeddings (Phase 4)** — find-similar, text-to-tracks, cluster.
-- **Live (Phase 5)** — get-deck-state, suggest-next-live.
-- **Plugins (Phase 6)** — register-plugin, list-plugins, call-plugin.
+- **Plugins (Phase 5)** — register-plugin, list-plugins, call-plugin.
 
 -----
 

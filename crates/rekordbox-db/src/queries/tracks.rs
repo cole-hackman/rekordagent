@@ -13,16 +13,16 @@ SELECT
     g.Name              AS Genre,
     k.ScaleName         AS MusicKey,
     CAST(c.BPM AS REAL) / 100.0 AS BPM,
-    c.Length,
-    c.Rating,
+    CAST(c.Length       AS INTEGER) AS Length,
+    CAST(c.Rating       AS INTEGER) AS Rating,
     c.Commnt,
     c.FolderPath,
     c.AnalysisDataPath,
-    c.FileType,
-    c.SampleRate,
-    c.BitRate,
-    c.ReleaseYear,
-    c.DJPlayCount
+    CAST(c.FileType     AS INTEGER) AS FileType,
+    CAST(c.SampleRate   AS INTEGER) AS SampleRate,
+    CAST(c.BitRate      AS INTEGER) AS BitRate,
+    CAST(c.ReleaseYear  AS INTEGER) AS ReleaseYear,
+    CAST(c.DJPlayCount  AS INTEGER) AS DJPlayCount
 FROM djmdContent c
 LEFT JOIN djmdArtist a  ON c.ArtistID = a.ID
 LEFT JOIN djmdAlbum  al ON c.AlbumID  = al.ID

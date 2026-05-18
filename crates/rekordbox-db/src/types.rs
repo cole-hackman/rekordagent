@@ -127,3 +127,14 @@ impl BeatGridEntry {
         self.tempo_bpm_x100 as f64 / 100.0
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct LibraryAnalytics {
+    pub total_tracks: usize,
+    /// Genre name -> Count
+    pub genre_distribution: std::collections::HashMap<String, usize>,
+    /// Floor(BPM) -> Count
+    pub bpm_histogram: std::collections::HashMap<u16, usize>,
+    /// Musical Key -> Count
+    pub key_distribution: std::collections::HashMap<String, usize>,
+}

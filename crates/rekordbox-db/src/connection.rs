@@ -58,14 +58,33 @@ impl RekordboxDb {
         queries::playlists::entries(&self.conn, playlist_id)
     }
 
+    pub fn track_ids_in_any_playlist(&self) -> Result<Vec<String>> {
+        queries::playlists::track_ids_in_any_playlist(&self.conn)
+    }
+
     // ── Health ───────────────────────────────────────────────────────────────
 
     pub fn duplicate_tracks(&self) -> Result<Vec<DuplicateGroup>> {
         Ok(queries::health::duplicate_tracks(self.tracks()?))
     }
 
+    pub fn fuzzy_duplicate_tracks(&self) -> Result<Vec<DuplicateGroup>> {
+        Ok(queries::health::fuzzy_duplicate_tracks(self.tracks()?))
+    }
+
+    pub fn audio_fingerprint_duplicates(
+        &self,
+        fingerprints: &std::collections::HashMap<String, Vec<u8>>,
+    ) -> Result<Vec<DuplicateGroup>> {
+        queries::health::audio_fingerprint_duplicates(self.tracks()?, fingerprints)
+    }
+
     pub fn broken_metadata_report(&self) -> Result<BrokenMetadataReport> {
         queries::health::broken_metadata_report(self.tracks()?)
+    }
+
+    pub fn library_analytics(&self) -> Result<crate::types::LibraryAnalytics> {
+        queries::analytics::library_analytics(&self.conn)
     }
 
     // ── Cues ─────────────────────────────────────────────────────────────────
@@ -76,6 +95,10 @@ impl RekordboxDb {
 
     pub fn all_hot_cues(&self) -> Result<Vec<HotCue>> {
         queries::cues::all(&self.conn)
+    }
+
+    pub fn track_ids_with_cues(&self) -> Result<Vec<String>> {
+        queries::cues::track_ids_with_cues(&self.conn)
     }
 
     // ── Beat grid (ANLZ) ─────────────────────────────────────────────────────

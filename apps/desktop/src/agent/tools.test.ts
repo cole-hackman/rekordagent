@@ -32,12 +32,15 @@ describe("agent tools", () => {
     expect(TOOL_SCHEMAS.map((tool) => tool.name).sort()).toEqual([
       "health__broken_link_scan",
       "health__duplicate_scan",
+      "health__fuzzy_duplicate_scan",
       "health__orphan_scan",
       "library__get_playlist",
       "library__get_track",
       "library__list_cues",
       "library__list_playlists",
       "library__search",
+      "relocate__apply",
+      "relocate__scan",
       "staging__list_changes",
       "staging__stage_change",
     ]);

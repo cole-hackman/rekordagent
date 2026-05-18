@@ -141,6 +141,11 @@ export interface DuplicateResult {
   groups: DuplicateGroup[];
 }
 
+export interface FuzzyDuplicateResult {
+  tool: "health.fuzzy_duplicate_scan";
+  groups: DuplicateGroup[];
+}
+
 export interface BrokenLinkResult {
   tool: "health.broken_link_scan";
   report: BrokenMetadataReport;
@@ -151,9 +156,24 @@ export interface StageChangeResult {
   change: StagedChange;
 }
 
+export interface LibraryStageIntroCuesResult {
+  tool: "library.stage_intro_cues";
+  changes: StagedChange[];
+}
+
 export interface ListChangesResult {
   tool: "staging.list_changes";
   changes: StagedChange[];
+}
+
+export interface RelocateScanResult {
+  tool: "relocate.scan";
+  candidates: unknown[]; // from types.ts RelocateCandidate
+}
+
+export interface RelocateApplyResult {
+  tool: "relocate.apply";
+  change: StagedChange;
 }
 
 export type ToolPayload =
@@ -164,6 +184,10 @@ export type ToolPayload =
   | CuesResult
   | OrphanResult
   | DuplicateResult
+  | FuzzyDuplicateResult
   | BrokenLinkResult
   | StageChangeResult
-  | ListChangesResult;
+  | LibraryStageIntroCuesResult
+  | ListChangesResult
+  | RelocateScanResult
+  | RelocateApplyResult;

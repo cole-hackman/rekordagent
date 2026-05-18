@@ -107,6 +107,32 @@ impl CacheDb {
         }
     }
 
+    pub fn save_audio_fingerprint(&self, track_uri: &str, chroma_hash: &[u8]) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO audio_fingerprints (track_uri, chroma_hash)
+             VALUES (?1, ?2)
+             ON CONFLICT(track_uri) DO UPDATE SET chroma_hash = excluded.chroma_hash, created_at = unixepoch()",
+            rusqlite::params![track_uri, chroma_hash],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_all_fingerprints(&self) -> Result<Vec<(String, Vec<u8>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT track_uri, chroma_hash FROM audio_fingerprints")?;
+        let rows = stmt.query_map([], |row| {
+            let track_uri: String = row.get(0)?;
+            let chroma_hash: Vec<u8> = row.get(1)?;
+            Ok((track_uri, chroma_hash))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     pub fn schema_version(&self) -> Result<u32> {
         migrations::current_version(&self.conn)
     }
@@ -163,9 +189,27 @@ impl CacheDb {
              ORDER BY created_at, rowid",
         )?;
         let rows = stmt.query_map(rusqlite::params![id], row_to_message)?;
-        let messages = rows
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(anyhow::Error::from)?;
+        // Skip individual messages with malformed JSON rather than failing the
+        // whole conversation load — better to surface partial history than
+        // none. Genuine SQLite errors (locked DB, missing column) still bubble.
+        let mut messages = Vec::new();
+        let mut skipped = 0usize;
+        for row in rows {
+            match row {
+                Ok(msg) => messages.push(msg),
+                Err(rusqlite::Error::FromSqlConversionFailure(_, _, _)) => {
+                    skipped += 1;
+                }
+                Err(e) => return Err(anyhow::Error::from(e)),
+            }
+        }
+        if skipped > 0 {
+            tracing::warn!(
+                conversation_id = id,
+                skipped,
+                "load_conversation: dropped messages with unparseable content_json",
+            );
+        }
         Ok(Some(ConversationWithMessages {
             conversation,
             messages,
@@ -632,6 +676,44 @@ mod tests {
 
         db.delete_conversation(&conversation.id).unwrap();
         assert!(db.load_conversation(&conversation.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn load_conversation_skips_malformed_messages() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let conversation = db
+            .create_conversation(Some("/library/master.db"), "Corrupted")
+            .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "user",
+            serde_json::json!({"text": "first"}),
+        )
+        .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "assistant",
+            serde_json::json!({"blocks": []}),
+        )
+        .unwrap();
+
+        // Simulate corruption: overwrite one row's content_json with non-JSON.
+        db.conn
+            .execute(
+                "UPDATE conversation_messages SET content_json = 'not json {' \
+                 WHERE conversation_id = ?1 AND role = 'user'",
+                rusqlite::params![&conversation.id],
+            )
+            .unwrap();
+
+        // Should still load the surviving message rather than failing the call.
+        let loaded = db.load_conversation(&conversation.id).unwrap().unwrap();
+        assert_eq!(
+            loaded.messages.len(),
+            1,
+            "the assistant message must survive even though the user message is corrupted",
+        );
+        assert_eq!(loaded.messages[0].role, "assistant");
     }
 
     #[test]

@@ -18,6 +18,8 @@ vi.mock("../ipc", () => ({
   pickLibraryPath: vi.fn().mockResolvedValue(null),
   validateLibraryPath: vi.fn().mockResolvedValue(42),
   setLibraryPath: vi.fn().mockResolvedValue(undefined),
+  getAgentModel: vi.fn().mockResolvedValue("claude-sonnet-4-6"),
+  setAgentModel: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
@@ -29,6 +31,7 @@ import {
   pickLibraryPath,
   validateLibraryPath,
   setLibraryPath as setLibraryPathIpc,
+  setAgentModel,
 } from "../ipc";
 
 const mockStore = {
@@ -154,6 +157,16 @@ describe("SettingsPanel", () => {
     );
   });
 
+  it("persists the chosen agent model", async () => {
+    render(<SettingsPanel onClose={vi.fn()} />);
+    const select = (await screen.findByLabelText("Agent model")) as HTMLSelectElement;
+    expect(select.value).toBe("claude-sonnet-4-6");
+    fireEvent.change(select, { target: { value: "claude-opus-4-7" } });
+    await waitFor(() =>
+      expect(vi.mocked(setAgentModel)).toHaveBeenCalledWith("claude-opus-4-7"),
+    );
+  });
+
   it("loads Anthropic key from keychain on mount", async () => {
     vi.mocked(getApiKey).mockResolvedValue("sk-ant-existing");
     render(<SettingsPanel onClose={vi.fn()} />);
@@ -178,7 +191,7 @@ describe("SettingsPanel", () => {
     expect(await screen.findByText("Agent Runtime")).toBeInTheDocument();
     expect(screen.getByText(/Claude Code detected/i)).toBeInTheDocument();
     expect(screen.getByText(/Pro subscription/i)).toBeInTheDocument();
-    expect(screen.getByText(/Current chat runtime still uses Anthropic API/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chat will use your Claude Code subscription/i)).toBeInTheDocument();
   });
 
   it("saves Anthropic key when Save is clicked", async () => {

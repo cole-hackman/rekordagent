@@ -1,9 +1,17 @@
 import { useEffect } from "react";
 
+/**
+ * Treat a target as "interactive" if a global shortcut should yield to it.
+ * Inputs/selects/contenteditable obviously qualify. Buttons and links also
+ * legitimately rely on Space/Enter for activation, so a global Space binding
+ * that doesn't exclude them would steal their click.
+ */
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === "BUTTON" || tag === "A") return true;
+  if (target.getAttribute("role") === "button") return true;
   if (target.isContentEditable) return true;
   return false;
 }

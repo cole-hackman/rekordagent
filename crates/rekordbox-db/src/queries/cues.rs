@@ -45,6 +45,21 @@ pub fn all(conn: &Connection) -> Result<Vec<HotCue>> {
         .map_err(Into::into)
 }
 
+/// Return the distinct set of track/content IDs that have at least one cue.
+/// Used by the UI to power a "has cues / no cues" filter without fetching
+/// the full cue rows.
+pub fn track_ids_with_cues(conn: &Connection) -> Result<Vec<String>> {
+    let cue_select = cue_select(conn)?;
+    let sql = format!(
+        "SELECT DISTINCT {} FROM djmdCue WHERE {} IS NOT NULL",
+        cue_select.content_expr, cue_select.content_expr
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
+}
+
 fn cue_select(conn: &Connection) -> Result<CueSelect> {
     let columns = table_columns(conn, "djmdCue")?;
     let content_expr = pick_column(&columns, &["ContentID", "ContentId", "TrackID", "TrackId"])
@@ -154,6 +169,21 @@ mod tests {
         let path = make_db();
         let conn = create_test_db(&path).unwrap();
         assert!(for_track(&conn, "9999").unwrap().is_empty());
+    }
+
+    #[test]
+    fn track_ids_with_cues_distinct() {
+        let path = make_db();
+        let conn = create_test_db(&path).unwrap();
+        let ids = track_ids_with_cues(&conn).unwrap();
+        // Result must be non-empty and distinct.
+        assert!(!ids.is_empty(), "seed should have at least one cue");
+        let mut sorted = ids.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len(), "result must be distinct");
+        // Track "1" has cues in the seed.
+        assert!(ids.iter().any(|id| id == "1"));
     }
 
     #[test]

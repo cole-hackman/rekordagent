@@ -30,6 +30,15 @@ vi.mock("../hooks/useLibrary");
 import { useLibrary } from "../hooks/useLibrary";
 
 import { TrackTable } from "./TrackTable";
+import { EMPTY_FILTERS, type Filters, type FilterContext } from "../lib/filters";
+
+const EMPTY_CTX: FilterContext = {
+  tracksWithCues: new Set(),
+  tracksInAnyPlaylist: new Set(),
+  tracksWithMissingFiles: new Set(),
+};
+
+const withQuery = (q: string): Filters => ({ ...EMPTY_FILTERS, query: q });
 
 const TRACKS: Track[] = [
   {
@@ -87,53 +96,53 @@ beforeEach(() => {
 
 describe("TrackTable", () => {
   it("renders track titles", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.getByText("Acid Rain")).toBeInTheDocument();
   });
 
   it("renders artist names", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Surgeon")).toBeInTheDocument();
     expect(screen.getByText("Aphex Twin")).toBeInTheDocument();
   });
 
   it("renders BPM formatted to one decimal", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("140.0")).toBeInTheDocument();
     expect(screen.getByText("130.5")).toBeInTheDocument();
   });
 
   it("renders duration as M:SS", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("6:00")).toBeInTheDocument();
     expect(screen.getByText("4:00")).toBeInTheDocument();
   });
 
   it("filters tracks by title", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="dark" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={withQuery("dark")} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.queryByText("Acid Rain")).not.toBeInTheDocument();
   });
 
   it("filters tracks by artist", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="aphex" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={withQuery("aphex")} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.queryByText("Dark Matter")).not.toBeInTheDocument();
     expect(screen.getByText("Acid Rain")).toBeInTheDocument();
   });
 
-  it("shows 'No tracks found' when filter matches nothing", () => {
+  it("shows empty state when filters match nothing", () => {
     render(
-      <TrackTable libraryPath="/tmp/master.db" filter="zzznomatch" selectedTrackId={null} onSelect={vi.fn()} />,
+      <TrackTable libraryPath="/tmp/master.db" filters={withQuery("zzznomatch")} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />,
       { wrapper },
     );
     expect(
-      screen.getByText("No tracks match your filter"),
+      screen.getByText("No tracks match your filters"),
     ).toBeInTheDocument();
   });
 
   it("shows column headers", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Title")).toBeInTheDocument();
     expect(screen.getByText("Artist")).toBeInTheDocument();
     expect(screen.getByText("BPM")).toBeInTheDocument();

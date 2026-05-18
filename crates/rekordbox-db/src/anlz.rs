@@ -26,17 +26,70 @@
 /// ```
 use crate::types::BeatGridEntry;
 use anyhow::{ensure, Context, Result};
-use std::{fs, path::Path};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+/// Resolve a Rekordbox `analysis_data_path` (e.g. `/PIONEER/USBANLZ/.../ANLZ0000.DAT`)
+/// into an on-disk path relative to a library directory.
+///
+/// macOS Rekordbox 7 typically lays this out under `<lib_dir>/share/PIONEER/...`,
+/// older or sandboxed setups omit the `share` prefix. The path is *absolute*
+/// in the database, which means a naive `lib_dir.join(analysis_path)` discards
+/// `lib_dir` entirely — callers must trim the leading slash first.
+///
+/// Returns the first candidate that exists, or `None` if none do.
+pub fn resolve_anlz_path(lib_dir: &Path, analysis_path: &str) -> Option<PathBuf> {
+    let rel = analysis_path.trim_start_matches('/');
+    let with_share = lib_dir.join("share").join(rel);
+    if with_share.exists() {
+        return Some(with_share);
+    }
+    let without_share = lib_dir.join(rel);
+    if without_share.exists() {
+        return Some(without_share);
+    }
+    let absolute = PathBuf::from(analysis_path);
+    if absolute.exists() {
+        return Some(absolute);
+    }
+    None
+}
 
 const PMAI_MAGIC: &[u8; 4] = b"PMAI";
 const PQTZ_TAG: &[u8; 4] = b"PQTZ";
+const PWAV_TAG: &[u8; 4] = b"PWAV";
+const PWV3_TAG: &[u8; 4] = b"PWV3";
+const PWV4_TAG: &[u8; 4] = b"PWV4";
+const PWV5_TAG: &[u8; 4] = b"PWV5";
 
-pub fn read_beat_grid(path: &Path) -> Result<Vec<BeatGridEntry>> {
-    let data = fs::read(path).with_context(|| format!("reading ANLZ file {}", path.display()))?;
-    parse_beat_grid(&data)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value")]
+pub enum WaveformColor {
+    Blue(u8),        // 3-bit color value from PWAV/PWV3 (0-7)
+    Rgb(u8, u8, u8), // RGB values from PWV4/PWV5
 }
 
-fn parse_beat_grid(data: &[u8]) -> Result<Vec<BeatGridEntry>> {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreviewPoint {
+    pub height: u8,
+    pub color: WaveformColor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetailPoint {
+    pub height: u8,
+    pub color: WaveformColor,
+}
+
+/// Iterate over all sections in an ANLZ byte slice.
+/// The callback receives the 4-byte tag, the header length, and the full section byte slice (including header).
+pub fn for_each_section<F>(data: &[u8], mut callback: F) -> Result<()>
+where
+    F: FnMut(&[u8; 4], usize, &[u8]) -> Result<()>,
+{
     ensure!(data.len() >= 12, "ANLZ file too short");
     ensure!(&data[0..4] == PMAI_MAGIC, "ANLZ file missing PMAI magic");
 
@@ -49,26 +102,218 @@ fn parse_beat_grid(data: &[u8]) -> Result<Vec<BeatGridEntry>> {
     let mut pos = header_len;
     while pos + 12 <= data.len() {
         let tag = &data[pos..pos + 4];
+        let section_header_len =
+            u32::from_be_bytes(data[pos + 4..pos + 8].try_into().unwrap()) as usize;
         let section_total_len =
             u32::from_be_bytes(data[pos + 8..pos + 12].try_into().unwrap()) as usize;
 
-        if section_total_len == 0 {
+        // A section smaller than its own header is malformed; stop rather than
+        // hand a too-short slice to a parser.
+        if section_total_len < 12 {
             break;
         }
 
-        if tag == PQTZ_TAG {
-            return parse_pqtz_section(data, pos, section_total_len);
-        }
+        ensure!(
+            pos + section_total_len <= data.len(),
+            "ANLZ section truncated"
+        );
+
+        let section_data = &data[pos..pos + section_total_len];
+        callback(tag.try_into().unwrap(), section_header_len, section_data)?;
 
         pos += section_total_len;
     }
 
-    Ok(vec![])
+    Ok(())
 }
 
-/// Parse a PQTZ section starting at `section_start` (the byte offset of the
-/// "PQTZ" tag itself).
-///
+pub fn read_beat_grid(path: &Path) -> Result<Vec<BeatGridEntry>> {
+    let data = fs::read(path).with_context(|| format!("reading ANLZ file {}", path.display()))?;
+    parse_beat_grid(&data)
+}
+
+fn parse_beat_grid(data: &[u8]) -> Result<Vec<BeatGridEntry>> {
+    let mut entries = None;
+    for_each_section(data, |tag, _header_len, section_data| {
+        if tag == PQTZ_TAG && entries.is_none() {
+            entries = Some(parse_pqtz_section(section_data)?);
+        }
+        Ok(())
+    })?;
+    Ok(entries.unwrap_or_default())
+}
+
+pub fn read_preview_waveform(path: &Path) -> Result<Vec<PreviewPoint>> {
+    let data = fs::read(path).with_context(|| format!("reading ANLZ file {}", path.display()))?;
+    parse_preview_waveform(&data)
+}
+
+fn parse_preview_waveform(data: &[u8]) -> Result<Vec<PreviewPoint>> {
+    let mut pwv4_entries = None;
+    let mut pwav_entries = None;
+
+    for_each_section(data, |tag, _header_len, section_data| {
+        if tag == PWV4_TAG && pwv4_entries.is_none() {
+            pwv4_entries = Some(parse_pwv4_section(section_data)?);
+        } else if tag == PWAV_TAG && pwav_entries.is_none() {
+            pwav_entries = Some(parse_pwav_section(section_data)?);
+        }
+        Ok(())
+    })?;
+
+    // Prefer PWV4 (color) over PWAV (monochrome blue)
+    if let Some(entries) = pwv4_entries {
+        Ok(entries)
+    } else if let Some(entries) = pwav_entries {
+        Ok(entries)
+    } else {
+        Ok(vec![])
+    }
+}
+
+pub fn read_detail_waveform(path: &Path) -> Result<Vec<DetailPoint>> {
+    let data = fs::read(path).with_context(|| format!("reading ANLZ file {}", path.display()))?;
+    parse_detail_waveform(&data)
+}
+
+fn parse_detail_waveform(data: &[u8]) -> Result<Vec<DetailPoint>> {
+    let mut pwv5_entries = None;
+    let mut pwv3_entries = None;
+
+    for_each_section(data, |tag, _header_len, section_data| {
+        if tag == PWV5_TAG && pwv5_entries.is_none() {
+            pwv5_entries = Some(parse_pwv5_section(section_data)?);
+        } else if tag == PWV3_TAG && pwv3_entries.is_none() {
+            pwv3_entries = Some(parse_pwv3_section(section_data)?);
+        }
+        Ok(())
+    })?;
+
+    if let Some(entries) = pwv5_entries {
+        Ok(entries)
+    } else if let Some(entries) = pwv3_entries {
+        Ok(entries)
+    } else {
+        Ok(vec![])
+    }
+}
+
+/// Parse a PWV5 section (Detailed Color/3-Band Waveform).
+/// 2 bytes per entry, big-endian.
+fn parse_pwv5_section(section_data: &[u8]) -> Result<Vec<DetailPoint>> {
+    ensure!(section_data.len() >= 8, "PWV5 section truncated");
+    let header_len = u32::from_be_bytes(section_data[4..8].try_into().unwrap()) as usize;
+    ensure!(
+        section_data.len() >= header_len,
+        "PWV5 section too short for header"
+    );
+
+    let content = &section_data[header_len..];
+    let num_entries = content.len() / 2;
+    let mut points = Vec::with_capacity(num_entries);
+
+    for i in 0..num_entries {
+        let off = i * 2;
+        let x = u16::from_be_bytes(content[off..off + 2].try_into().unwrap());
+
+        let red = ((x & 0xE000) >> 13) as u8; // 0-7
+        let green = ((x & 0x1C00) >> 10) as u8;
+        let blue = ((x & 0x0380) >> 7) as u8;
+        let height = ((x & 0x007C) >> 2) as u8; // 0-31
+
+        points.push(DetailPoint {
+            height,
+            color: WaveformColor::Rgb(red * 36, green * 36, blue * 36),
+        });
+    }
+
+    Ok(points)
+}
+
+/// Parse a PWV3 section (Detailed Monochrome Blue Waveform).
+/// 1 byte per entry.
+fn parse_pwv3_section(section_data: &[u8]) -> Result<Vec<DetailPoint>> {
+    ensure!(section_data.len() >= 8, "PWV3 section truncated");
+    let header_len = u32::from_be_bytes(section_data[4..8].try_into().unwrap()) as usize;
+    ensure!(
+        section_data.len() >= header_len,
+        "PWV3 section too short for header"
+    );
+
+    let content = &section_data[header_len..];
+    let mut points = Vec::with_capacity(content.len());
+
+    for &b in content {
+        let height = b & 0x1F;
+        let color = b >> 5;
+
+        points.push(DetailPoint {
+            height,
+            color: WaveformColor::Blue(color * 36),
+        });
+    }
+
+    Ok(points)
+}
+
+/// Parse a PWV4 section (Color Preview Waveform).
+/// 6 bytes per entry.
+fn parse_pwv4_section(section_data: &[u8]) -> Result<Vec<PreviewPoint>> {
+    ensure!(section_data.len() >= 8, "PWV4 section truncated");
+    let header_len = u32::from_be_bytes(section_data[4..8].try_into().unwrap()) as usize;
+    ensure!(
+        section_data.len() >= header_len,
+        "PWV4 section too short for header"
+    );
+
+    let content = &section_data[header_len..];
+    let num_entries = content.len() / 6;
+    let mut points = Vec::with_capacity(num_entries);
+
+    for i in 0..num_entries {
+        let off = i * 6;
+        let r = content[off + 3] & 0x7F; // 0-127
+        let g = content[off + 4] & 0x7F;
+        let b = content[off + 5] & 0x7F;
+        let height = b; // pyrekordbox: `d5` is blue and height of front waveform
+
+        points.push(PreviewPoint {
+            height,
+            color: WaveformColor::Rgb(r * 2, g * 2, b * 2), // scale to 0-254
+        });
+    }
+
+    Ok(points)
+}
+
+/// Parse a PWAV section (Monochrome Blue Preview Waveform).
+/// 1 byte per entry.
+fn parse_pwav_section(section_data: &[u8]) -> Result<Vec<PreviewPoint>> {
+    ensure!(section_data.len() >= 8, "PWAV section truncated");
+    let header_len = u32::from_be_bytes(section_data[4..8].try_into().unwrap()) as usize;
+    ensure!(
+        section_data.len() >= header_len,
+        "PWAV section too short for header"
+    );
+
+    let content = &section_data[header_len..];
+    let mut points = Vec::with_capacity(content.len());
+
+    for &b in content {
+        let height = b & 0x1F;
+        let color = b >> 5;
+
+        points.push(PreviewPoint {
+            height,
+            color: WaveformColor::Blue(color),
+        });
+    }
+
+    Ok(points)
+}
+
+/// Parse a PQTZ section.
+/// `section_data` is the entire section including the "PQTZ" tag.
 /// Section layout (all big-endian):
 /// ```text
 ///  [0..4]   "PQTZ"
@@ -79,40 +324,30 @@ fn parse_beat_grid(data: &[u8]) -> Result<Vec<BeatGridEntry>> {
 ///  [20..24] reserved
 ///  [24..]   beat entries (8 bytes each)
 /// ```
-fn parse_pqtz_section(
-    data: &[u8],
-    section_start: usize,
-    section_total_len: usize,
-) -> Result<Vec<BeatGridEntry>> {
+fn parse_pqtz_section(section_data: &[u8]) -> Result<Vec<BeatGridEntry>> {
+    ensure!(section_data.len() >= 24, "PQTZ section truncated");
+    let header_len = u32::from_be_bytes(section_data[4..8].try_into().unwrap()) as usize;
     ensure!(
-        data.len() >= section_start + 24,
+        section_data.len() >= header_len,
         "PQTZ section too short for header"
     );
+    ensure!(header_len >= 24, "PQTZ header too small");
 
-    let beat_count = u32::from_be_bytes(
-        data[section_start + 16..section_start + 20]
-            .try_into()
-            .unwrap(),
-    ) as usize;
+    let beat_count = u32::from_be_bytes(section_data[16..20].try_into().unwrap()) as usize;
 
-    let beats_start = section_start + 24;
-    let section_end = section_start + section_total_len;
+    let beats_start = header_len;
 
     ensure!(
-        data.len() >= section_end,
-        "ANLZ data truncated inside PQTZ section"
-    );
-    ensure!(
-        beats_start + beat_count * 8 <= section_end,
+        beats_start + beat_count * 8 <= section_data.len(),
         "PQTZ beat entries extend beyond section boundary"
     );
 
     let mut entries = Vec::with_capacity(beat_count);
     for i in 0..beat_count {
         let off = beats_start + i * 8;
-        let beat_number = u16::from_be_bytes(data[off..off + 2].try_into().unwrap());
-        let tempo = u16::from_be_bytes(data[off + 2..off + 4].try_into().unwrap());
-        let time_ms = u32::from_be_bytes(data[off + 4..off + 8].try_into().unwrap());
+        let beat_number = u16::from_be_bytes(section_data[off..off + 2].try_into().unwrap());
+        let tempo = u16::from_be_bytes(section_data[off + 2..off + 4].try_into().unwrap());
+        let time_ms = u32::from_be_bytes(section_data[off + 4..off + 8].try_into().unwrap());
         entries.push(BeatGridEntry {
             beat_number,
             tempo_bpm_x100: tempo,
@@ -216,5 +451,70 @@ mod tests {
     #[test]
     fn too_short_returns_error() {
         assert!(parse_beat_grid(&[0u8; 4]).is_err());
+    }
+
+    #[test]
+    fn resolve_anlz_path_with_share_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rel = "PIONEER/USBANLZ/P000/0001/ANLZ0000.DAT";
+        let target = tmp.path().join("share").join(rel);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, b"x").unwrap();
+
+        let resolved =
+            resolve_anlz_path(tmp.path(), "/PIONEER/USBANLZ/P000/0001/ANLZ0000.DAT").unwrap();
+        assert_eq!(resolved, target);
+    }
+
+    #[test]
+    fn resolve_anlz_path_without_share_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rel = "PIONEER/USBANLZ/P000/0001/ANLZ0000.DAT";
+        let target = tmp.path().join(rel);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, b"x").unwrap();
+
+        let resolved =
+            resolve_anlz_path(tmp.path(), "/PIONEER/USBANLZ/P000/0001/ANLZ0000.DAT").unwrap();
+        assert_eq!(resolved, target);
+    }
+
+    #[test]
+    fn resolve_anlz_path_missing_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(resolve_anlz_path(tmp.path(), "/PIONEER/NOPE.DAT").is_none());
+    }
+
+    #[test]
+    fn parse_pqtz_truncated_returns_error_not_panic() {
+        // 7 bytes — short enough that section_data[4..8] would panic
+        // without the new bounds check.
+        let truncated: &[u8] = &[b'P', b'Q', b'T', b'Z', 0, 0, 0];
+        assert!(parse_pqtz_section(truncated).is_err());
+    }
+
+    #[test]
+    fn parse_pwav_truncated_returns_error_not_panic() {
+        let truncated: &[u8] = &[b'P', b'W', b'A', b'V', 0, 0, 0];
+        assert!(parse_pwav_section(truncated).is_err());
+    }
+
+    #[test]
+    fn for_each_section_skips_undersized_section() {
+        // File: PMAI header (28b) + a single PQTZ section claiming total_len = 4 (< 12).
+        // The hardened for_each_section must break out cleanly instead of letting the
+        // parser see a truncated slice.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"PMAI");
+        buf.extend_from_slice(&28u32.to_be_bytes());
+        buf.extend_from_slice(&40u32.to_be_bytes()); // file total len
+        buf.extend_from_slice(&[0u8; 16]);
+        // Bogus section header
+        buf.extend_from_slice(b"PQTZ");
+        buf.extend_from_slice(&12u32.to_be_bytes()); // section header len
+        buf.extend_from_slice(&4u32.to_be_bytes()); // section total len — too small
+
+        let entries = parse_beat_grid(&buf).unwrap();
+        assert!(entries.is_empty(), "should bail without panicking");
     }
 }

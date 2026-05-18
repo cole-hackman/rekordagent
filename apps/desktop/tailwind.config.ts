@@ -4,7 +4,12 @@ import type { Config } from "tailwindcss";
 const v = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./index.html",
+    "./src/**/*.{ts,tsx}",
+    // Streamdown ships prose-style class names; keep them un-purged.
+    "./node_modules/streamdown/dist/**/*.{js,mjs}",
+  ],
   darkMode: "class",
   theme: {
     extend: {
@@ -56,6 +61,25 @@ export default {
           error: v("status-error"),
           info: v("status-info"),
         },
+        // shadcn-style aliases so drop-in components (ElevenLabs UI, etc.)
+        // work without modification. These piggy-back on the same CSS vars
+        // as our semantic tokens above.
+        background: v("bg-base"),
+        foreground: v("text-primary"),
+        muted: {
+          DEFAULT: v("bg-elevated"),
+          foreground: v("text-muted"),
+        },
+        primary: {
+          DEFAULT: v("accent"),
+          foreground: v("bg-base"),
+        },
+        secondary: {
+          DEFAULT: v("bg-elevated"),
+          foreground: v("text-primary"),
+        },
+        border: v("border-default"),
+        ring: v("accent"),
       },
       transitionDuration: {
         80: "80ms",

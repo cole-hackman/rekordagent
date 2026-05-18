@@ -6,13 +6,27 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { PlaylistPanel } from "./components/PlaylistPanel";
 import { DiffReviewPanel } from "./components/DiffReviewPanel";
+import { AnalyticsView } from "./components/AnalyticsView";
+import { InboxView } from "./components/InboxView";
 import { SidebarNav, type WorkspaceView } from "./components/SidebarNav";
 import { StatusBar } from "./components/StatusBar";
 import { AuditView } from "./components/AuditView";
+import { FilterDrawer } from "./components/FilterDrawer";
+import { FilterChips } from "./components/FilterChips";
+import { RelocateBanner } from "./components/RelocateBanner";
+import { ResizablePanel } from "./components/ui/ResizablePanel";
 import { useAppStore } from "./store/appStore";
 import { useAudioPlayer } from "./hooks/useAudioPlayer";
 import { useStagedChanges } from "./hooks/useStagedChanges";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useFilterContext } from "./hooks/useFilterContext";
+import { useLibrary } from "./hooks/useLibrary";
+import {
+  activeFilterCount,
+  distinctValues,
+  EMPTY_FILTERS,
+  type Filters,
+} from "./lib/filters";
 import { getLibraryPath, validateLibraryPath, getTheme } from "./ipc";
 import type { Track } from "./types";
 
@@ -26,13 +40,33 @@ export default function App() {
   const { libraryPath, trackCount, theme, setLibraryConfigured, setTheme } =
     useAppStore();
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
+  const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
   const [currentView, setCurrentView] = useState<WorkspaceView>("library");
   const [inspector, setInspector] = useState<"details" | "agent" | null>(null);
   const [pendingAgentPrompt, setPendingAgentPrompt] = useState<string | null>(
     null,
   );
+
+  const { data: tracks = [] } = useLibrary(libraryPath);
+  const { ctx: filterCtx, missingFilesLoading } = useFilterContext(
+    libraryPath,
+    filters.missingFiles,
+  );
+  const availableKeys = useMemo(
+    () => distinctValues(tracks, (t) => t.musical_key),
+    [tracks],
+  );
+  const availableGenres = useMemo(
+    () => distinctValues(tracks, (t) => t.genre),
+    [tracks],
+  );
+  const activeFilters = activeFilterCount(filters);
+
+  const updateQuery = (q: string) =>
+    setFilters((prev) => ({ ...prev, query: q }));
 
   const runAudit = (prompt: string) => {
     setPendingAgentPrompt(prompt);
@@ -48,8 +82,25 @@ export default function App() {
 
   const handleTrackSelect = (track: Track) => {
     setSelectedTrack(track);
+    setSelectedTrackIds(new Set([track.id]));
     if (inspector === null) setInspector("details");
   };
+
+  const handleSelectionChange = (ids: Set<string>) => {
+    setSelectedTrackIds(ids);
+    if (ids.size === 1) {
+      const id = Array.from(ids)[0];
+      const track = tracks.find((t) => t.id === id);
+      if (track) setSelectedTrack(track);
+    } else if (ids.size === 0) {
+      setSelectedTrack(null);
+    }
+  };
+
+  useEffect(() => {
+    setSelectedTrack(null);
+    setSelectedTrackIds(new Set());
+  }, [libraryPath]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,6 +117,13 @@ export default function App() {
           },
         },
         {
+          key: " ",
+          handler: (event) => {
+            event.preventDefault();
+            void audio.toggleCurrent();
+          },
+        },
+        {
           key: "escape",
           handler: () => {
             if (
@@ -79,7 +137,7 @@ export default function App() {
           },
         },
       ],
-      [currentView, inspector],
+      [currentView, inspector, audio],
     ),
   );
 
@@ -160,24 +218,45 @@ export default function App() {
 
         <div className="ml-auto flex items-center gap-2">
           {showSearch && (
-            <div className="relative">
-              <input
-                ref={searchInputRef}
-                type="search"
-                placeholder="Filter library…"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="w-60 rounded-md border border-edge bg-surface px-3 py-1 pr-7 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
-              />
-              <kbd
-                aria-hidden
-                className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rounded border border-edge-strong bg-surface px-1 font-mono text-[10px] text-ink-muted"
+            <>
+              <div className="relative">
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  placeholder="Filter library…"
+                  value={filters.query}
+                  onChange={(e) => updateQuery(e.target.value)}
+                  className="w-60 rounded-md border border-edge bg-surface px-3 py-1 pr-7 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                />
+                <kbd
+                  aria-hidden
+                  className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rounded border border-edge-strong bg-surface px-1 font-mono text-[10px] text-ink-muted"
+                >
+                  /
+                </kbd>
+              </div>
+              <button
+                onClick={() => setFilterDrawerOpen((v) => !v)}
+                aria-label="Open filters"
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors duration-150 ${
+                  activeFilters > 0 || filterDrawerOpen
+                    ? "border-accent/60 bg-accent/10 text-accent-hover"
+                    : "border-edge text-ink-secondary hover:border-edge-strong hover:text-ink"
+                }`}
               >
-                /
-              </kbd>
-            </div>
+                <svg viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3">
+                  <path d="M1.5 1.5A.5.5 0 012 1h12a.5.5 0 01.39.812l-4.89 6.115V14a.5.5 0 01-.77.42l-3-2A.5.5 0 016 12V7.927L1.11 1.812A.5.5 0 011.5 1.5zm.99.5l4.36 5.451a.5.5 0 01.11.312v3.96l2 1.333V7.763a.5.5 0 01.11-.312L13.43 2H2.49z" />
+                </svg>
+                <span>Filters</span>
+                {activeFilters > 0 && (
+                  <span className="ml-0.5 rounded-full bg-accent px-1.5 font-mono text-[10px] font-semibold tabular-nums text-base">
+                    {activeFilters}
+                  </span>
+                )}
+              </button>
+            </>
           )}
-          {showInspectorToggles && selectedTrack && (
+          {showInspectorToggles && (
             <button
               onClick={() =>
                 setInspector((v) => (v === "details" ? null : "details"))
@@ -216,13 +295,29 @@ export default function App() {
         />
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {currentView === "library" && (
-            <TrackTable
+          {currentView === "inbox" && (
+            <InboxView
               libraryPath={libraryPath}
-              filter={filter}
-              selectedTrackId={selectedTrack?.id ?? null}
+              selectedTrackIds={selectedTrackIds}
+              onSelectionChange={handleSelectionChange}
               onSelect={handleTrackSelect}
             />
+          )}
+          {currentView === "library" && (
+            <>
+              <FilterChips filters={filters} onChange={setFilters} />
+              {filters.missingFiles && (
+                <RelocateBanner libraryPath={libraryPath} />
+              )}
+              <TrackTable
+                libraryPath={libraryPath}
+                filters={filters}
+                filterCtx={filterCtx}
+                selectedTrackIds={selectedTrackIds}
+                onSelectionChange={handleSelectionChange}
+                onSelect={handleTrackSelect}
+              />
+            </>
           )}
           {currentView === "playlists" && (
             <PlaylistPanel
@@ -233,6 +328,9 @@ export default function App() {
           )}
           {currentView === "changes" && (
             <DiffReviewPanel libraryPath={libraryPath} />
+          )}
+          {currentView === "analytics" && (
+            <AnalyticsView libraryPath={libraryPath} />
           )}
           {currentView === "audit" && (
             <AuditView
@@ -245,21 +343,46 @@ export default function App() {
           {currentView === "settings" && <SettingsPanel />}
         </main>
 
-        {inspector === "details" && selectedTrack && (
-          <TrackDetailPanel
-            track={selectedTrack}
-            libraryPath={libraryPath}
-            isPlaying={audio.isPlaying && audio.isCurrentTrack(selectedTrack)}
-            onTogglePlay={audio.toggleCurrent}
-          />
-        )}
-        {inspector === "agent" && (
-          <ChatPanel
-            libraryPath={libraryPath}
-            onClose={() => setInspector(null)}
-            pendingPrompt={pendingAgentPrompt}
-            onPromptConsumed={() => setPendingAgentPrompt(null)}
-          />
+        {inspector !== null && (
+          <ResizablePanel
+            side="right"
+            className="border-l border-edge bg-base"
+            minWidth={280}
+            maxWidth={800}
+            defaultWidth={320}
+          >
+            {inspector === "details" && (
+              <TrackDetailPanel
+                track={selectedTrack}
+                libraryPath={libraryPath}
+                isPlaying={
+                  selectedTrack
+                    ? audio.isPlaying && audio.isCurrentTrack(selectedTrack)
+                    : false
+                }
+                onTogglePlay={audio.toggleCurrent}
+                currentTime={
+                  selectedTrack && audio.isCurrentTrack(selectedTrack)
+                    ? audio.currentTime
+                    : 0
+                }
+                playbackDuration={
+                  selectedTrack && audio.isCurrentTrack(selectedTrack)
+                    ? audio.duration
+                    : 0
+                }
+                onSeek={audio.seek}
+              />
+            )}
+            {inspector === "agent" && (
+              <ChatPanel
+                libraryPath={libraryPath}
+                onClose={() => setInspector(null)}
+                pendingPrompt={pendingAgentPrompt}
+                onPromptConsumed={() => setPendingAgentPrompt(null)}
+              />
+            )}
+          </ResizablePanel>
         )}
       </div>
 
@@ -271,7 +394,16 @@ export default function App() {
         pendingChanges={proposedCount}
         acceptedChanges={acceptedCount}
       />
+
+      <FilterDrawer
+        open={filterDrawerOpen}
+        onClose={() => setFilterDrawerOpen(false)}
+        filters={filters}
+        onChange={setFilters}
+        availableKeys={availableKeys}
+        availableGenres={availableGenres}
+        missingFilesLoading={missingFilesLoading}
+      />
     </div>
   );
 }
-

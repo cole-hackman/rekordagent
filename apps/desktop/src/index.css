@@ -34,6 +34,18 @@
   --status-warn: 251 146 60;   /* orange-400 */
   --status-error: 248 113 113; /* red-400 */
   --status-info: 56 189 248;   /* sky-400 */
+
+  /* shadcn-compatible aliases for drop-in components (ElevenLabs UI etc.) */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  --muted: var(--bg-elevated);
+  --muted-foreground: var(--text-muted);
+  --primary: var(--accent);
+  --primary-foreground: var(--bg-base);
+  --secondary: var(--bg-elevated);
+  --secondary-foreground: var(--text-primary);
+  --border: var(--border-default);
+  --ring: var(--accent);
 }
 
 .light {
@@ -55,6 +67,8 @@
   --accent-hover: 180 83 9;    /* amber-700 */
   --accent-strong: 146 64 14;  /* amber-800 */
   --accent-dim: 254 215 170;   /* orange-200 — subtle highlight */
+
+  --primary-foreground: 255 255 255;
 }
 
 html,

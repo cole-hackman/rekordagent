@@ -18,8 +18,9 @@ mod connection;
 mod queries;
 pub mod types;
 
+pub use anlz::{DetailPoint, PreviewPoint, WaveformColor};
 pub use connection::RekordboxDb;
 pub use types::{
-    BeatGridEntry, BrokenMetadataReport, CueKind, DuplicateGroup, HotCue, Playlist, PlaylistEntry,
-    PlaylistKind, Track,
+    BeatGridEntry, BrokenMetadataReport, CueKind, DuplicateGroup, HotCue, LibraryAnalytics,
+    Playlist, PlaylistEntry, PlaylistKind, Track,
 };

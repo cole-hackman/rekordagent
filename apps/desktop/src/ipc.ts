@@ -7,6 +7,12 @@ import type {
   PlaylistDetail,
   DuplicateGroup,
   BrokenMetadataReport,
+  LibraryAnalytics,
+  TrackTags,
+  TagWriteFields,
+  AnalysisResult,
+  AnlzWaveform,
+  RelocateCandidate,
 } from "./types";
 import type {
   ChatMessage,
@@ -79,8 +85,25 @@ export interface PlaybackState {
   path: string | null;
 }
 
+export interface PlaybackStatus {
+  is_playing: boolean;
+  path: string | null;
+  /** Seconds since playback started, 0 if no track loaded. */
+  time: number;
+  /** Total track duration in seconds, 0 if unknown. */
+  duration: number;
+}
+
 export async function getPlaybackState(): Promise<PlaybackState> {
   return invoke<PlaybackState>("get_playback_state");
+}
+
+export async function getPlaybackStatus(): Promise<PlaybackStatus> {
+  return invoke<PlaybackStatus>("get_playback_status");
+}
+
+export async function seekAudio(timeSecs: number): Promise<void> {
+  return invoke<void>("seek_audio", { timeSecs });
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -91,6 +114,19 @@ export async function getTheme(): Promise<string | null> {
 
 export async function setTheme(theme: string): Promise<void> {
   return invoke<void>("set_theme", { theme });
+}
+
+export type AgentModel =
+  | "claude-opus-4-7"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5-20251001";
+
+export async function getAgentModel(): Promise<AgentModel> {
+  return invoke<AgentModel>("get_agent_model");
+}
+
+export async function setAgentModel(model: AgentModel): Promise<void> {
+  return invoke<void>("set_agent_model", { model });
 }
 
 export async function getApiKey(service: string): Promise<string | null> {
@@ -241,6 +277,24 @@ export async function librarySearch(
   return invoke<Track[]>("library_search", { path, query, limit });
 }
 
+export async function suggestNextTracks(
+  path: string,
+  trackId: string,
+  limit?: number,
+): Promise<[Track, import("./types").TransitionScore][]> {
+  return invoke<[Track, import("./types").TransitionScore][]>("suggest_next_tracks", { path, trackId, limit });
+}
+
+export async function libraryStageIntroCues(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("library_stage_intro_cues", {
+    libraryPath,
+    trackIds,
+  });
+}
+
 export async function listPlaylists(path: string): Promise<Playlist[]> {
   return invoke<Playlist[]>("list_playlists", { path });
 }
@@ -252,6 +306,20 @@ export async function getPlaylist(
   return invoke<PlaylistDetail | null>("get_playlist", { path, playlistId });
 }
 
+export async function listTracksWithCues(path: string): Promise<string[]> {
+  return invoke<string[]>("list_tracks_with_cues", { path });
+}
+
+export async function listTracksInAnyPlaylist(path: string): Promise<string[]> {
+  return invoke<string[]>("list_tracks_in_any_playlist", { path });
+}
+
+export async function listTracksWithMissingFiles(
+  path: string,
+): Promise<string[]> {
+  return invoke<string[]>("list_tracks_with_missing_files", { path });
+}
+
 export async function healthOrphanScan(path: string): Promise<Track[]> {
   return invoke<Track[]>("health_orphan_scan", { path });
 }
@@ -260,8 +328,63 @@ export async function healthDuplicateScan(path: string): Promise<DuplicateGroup[
   return invoke<DuplicateGroup[]>("health_duplicate_scan", { path });
 }
 
+export async function healthFuzzyDuplicateScan(path: string): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("health_fuzzy_duplicate_scan", { path });
+}
+
 export async function healthBrokenLinkScan(
   path: string,
 ): Promise<BrokenMetadataReport> {
   return invoke<BrokenMetadataReport>("health_broken_link_scan", { path });
+}
+
+export async function getLibraryAnalytics(
+  path: string,
+): Promise<LibraryAnalytics> {
+  return invoke<LibraryAnalytics>("library_analytics", { path });
+}
+
+export async function readAudioTags(filePath: string): Promise<TrackTags> {
+  return invoke<TrackTags>("read_audio_tags", { filePath });
+}
+
+export async function analyzeTrack(
+  libraryPath: string,
+  trackId: string,
+): Promise<AnalysisResult> {
+  return invoke<AnalysisResult>("analyze_track", {
+    libraryPath,
+    trackId,
+  });
+}
+
+export async function getAnlzWaveform(
+  libraryPath: string,
+  trackId: string,
+): Promise<AnlzWaveform> {
+  return invoke<AnlzWaveform>("get_anlz_waveform", { libraryPath, trackId });
+}
+
+export async function getAudioWaveform(
+  filePath: string,
+  bars?: number,
+): Promise<number[]> {
+  return invoke<number[]>("get_audio_waveform", { filePath, bars: bars ?? null });
+}
+
+export async function writeAudioTags(
+  filePath: string,
+  fields: TagWriteFields,
+): Promise<void> {
+  return invoke<void>("write_audio_tags", { filePath, fields });
+}
+
+export async function relocateScan(
+  libraryPath: string,
+  searchRoots: string[],
+): Promise<RelocateCandidate[]> {
+  return invoke<RelocateCandidate[]>("relocate_scan", {
+    libraryPath,
+    searchRoots,
+  });
 }

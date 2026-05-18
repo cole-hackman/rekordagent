@@ -28,6 +28,7 @@ MCP advertises host-safe underscore tool names:
 - `library_list_cues`
 - `health_orphan_scan`
 - `health_duplicate_scan`
+- `health_fuzzy_duplicate_scan`
 - `health_broken_link_scan`
 - `staging_list_changes`
 
@@ -77,15 +78,24 @@ If the CLI uses a settings file instead of `gemini mcp add`, configure:
 
 ## OpenAI
 
-The OpenAI Responses API can use MCP tools when the MCP server is reachable through an HTTP/remote transport. The current Rekordagent implementation is local stdio only, which is ideal for Claude Code and Gemini CLI but not directly reachable by hosted OpenAI API calls.
-
-Planned OpenAI path:
+The OpenAI Responses API can use MCP tools when the MCP server is reachable through an HTTP/remote transport. Rekordagent includes a local-only HTTP MCP development transport:
 
 ```sh
-decks mcp-http --bind 127.0.0.1:8787
+cargo build -p decks-cli
+/Users/coleh/rekordagent/target/debug/decks mcp-http --bind 127.0.0.1:8787
 ```
 
-Keep HTTP MCP local by default. Do not bind to `0.0.0.0` unless there is a deliberate authentication and network exposure plan.
+The HTTP transport currently supports one JSON-RPC request per `POST /mcp` request. It does not implement streaming or SSE. JSON-RPC notifications return HTTP `202 Accepted` with an empty body because notifications do not produce JSON-RPC responses.
+
+Example request:
+
+```sh
+curl -sS http://127.0.0.1:8787/mcp \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+Keep HTTP MCP local by default. The CLI default bind address is `127.0.0.1:8787`, and this development transport is not authenticated. Hosted OpenAI API calls cannot reach this loopback endpoint directly; use an authenticated HTTPS tunnel, proxy, or bridge if you deliberately expose it for remote MCP development. Do not bind to `0.0.0.0` unless there is a deliberate authentication and network exposure plan.
 
 ## Diagnostic CLI
 

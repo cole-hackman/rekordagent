@@ -1,6 +1,15 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAgent } from "../agent/useAgent";
 import type { AssistantMessage, ToolResultBlock } from "../agent/types";
+import { Message, MessageContent } from "@/components/ui/message";
+import { Response } from "@/components/ui/response";
+import { ShimmeringText } from "@/components/ui/shimmering-text";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ui/conversation";
 
 interface Props {
   libraryPath: string;
@@ -38,23 +47,32 @@ function ToolCallCard({
   );
 }
 
-function AssistantBubble({ msg }: { msg: AssistantMessage }) {
+function AssistantBubble({
+  msg,
+  isStreaming,
+  isLast,
+}: {
+  msg: AssistantMessage;
+  isStreaming: boolean;
+  isLast: boolean;
+}) {
   const hasContent = msg.blocks.some(
     (b) => b.type === "text" && b.text.length > 0,
   );
   const hasToolCalls = msg.blocks.some((b) => b.type === "tool_call");
+  const showShimmer = isStreaming && isLast && !hasContent && !hasToolCalls;
 
   return (
-    <div className="max-w-[90%]">
+    <div className="flex flex-col gap-1.5">
       {msg.blocks.map((block, i) => {
         if (block.type === "text" && block.text) {
           return (
-            <p
+            <Response
               key={i}
-              className="whitespace-pre-wrap text-sm leading-relaxed text-ink"
+              className="text-[13px] leading-relaxed text-ink"
             >
               {block.text}
-            </p>
+            </Response>
           );
         }
         if (block.type === "tool_call") {
@@ -64,8 +82,12 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
         }
         return null;
       })}
-      {!hasContent && !hasToolCalls && (
-        <div className="h-4 w-4 animate-spin rounded-full border border-edge-strong border-t-accent-hover" />
+      {showShimmer && (
+        <ShimmeringText
+          text="Thinking…"
+          className="text-[12px]"
+          spread={1}
+        />
       )}
     </div>
   );
@@ -175,12 +197,7 @@ export function ChatPanel({
     deleteActiveConversation,
   } = useAgent(libraryPath);
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   useEffect(() => {
     if (!pendingPrompt) return;
@@ -290,66 +307,119 @@ export function ChatPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {messages.length === 0 && !error && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center px-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-edge bg-surface text-accent-hover">
-              <svg viewBox="0 0 16 16" fill="currentColor" className="h-6 w-6">
+      {messages.length === 0 && !error ? (
+        <div className="flex flex-1 flex-col">
+          <ConversationEmptyState
+            className="flex-1"
+            icon={
+              <svg
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                className="h-6 w-6 text-accent-hover"
+              >
                 <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
               </svg>
+            }
+            title={
+              <span className="text-[13px] font-semibold text-ink">
+                Agent Assistant
+              </span>
+            }
+            description={
+              <span className="text-[12px] text-ink-secondary">
+                Ask questions about your library, or find missing metadata
+                and duplicates.
+                <br />
+                <span className="mt-2 block text-[11px] text-ink-faint">
+                  Scan → Propose changes → Review → Export
+                </span>
+              </span>
+            }
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-edge bg-surface">
+                <svg
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  className="h-6 w-6 text-accent-hover"
+                >
+                  <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
+                </svg>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[13px] font-semibold text-ink">
+                  Agent Assistant
+                </p>
+                <p className="text-[12px] text-ink-secondary">
+                  Ask questions about your library, or find missing metadata
+                  and duplicates.
+                </p>
+                <p className="text-[11px] text-ink-faint">
+                  Scan → Propose changes → Review → Export
+                </p>
+              </div>
+              <button
+                onClick={handleAudit}
+                disabled={isStreaming}
+                className="mt-1 rounded-md bg-elevated px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-hover disabled:opacity-40"
+              >
+                Start Library Audit
+              </button>
             </div>
-            <div>
-              <p className="text-sm font-medium text-ink">Agent Assistant</p>
-              <p className="mt-1 text-xs text-ink-secondary">Ask questions about your library, or find missing metadata and duplicates.</p>
-              <p className="mt-2 text-[11px] text-ink-faint">Scan → Propose changes → Review → Export</p>
-            </div>
-            <button
-              onClick={handleAudit}
-              disabled={isStreaming}
-              className="mt-2 rounded-md bg-elevated px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-hover disabled:opacity-40"
-            >
-              Start Library Audit
-            </button>
-          </div>
-        )}
-
-        {messages.map((msg, i) => {
-          if (msg.role === "user") {
-            return (
-              <div key={i} className="flex justify-end">
-                <div className="max-w-[85%] rounded-2xl bg-accent-strong px-3 py-2 text-sm text-white">
-                  {msg.text}
+          </ConversationEmptyState>
+        </div>
+      ) : (
+        <Conversation className="flex-1">
+          <ConversationContent className="flex flex-col gap-2 p-3">
+            {messages.map((msg, i) => {
+              const isLastAssistant =
+                msg.role === "assistant" && i === messages.length - 1;
+              if (msg.role === "user") {
+                return (
+                  <Message key={i} from="user">
+                    <MessageContent variant="contained" className="text-[13px]">
+                      {msg.text}
+                    </MessageContent>
+                  </Message>
+                );
+              }
+              if (msg.role === "assistant") {
+                return (
+                  <Message key={i} from="assistant">
+                    <MessageContent
+                      variant="flat"
+                      className="w-full max-w-full px-0"
+                    >
+                      <AssistantBubble
+                        msg={msg}
+                        isStreaming={isStreaming}
+                        isLast={isLastAssistant}
+                      />
+                    </MessageContent>
+                  </Message>
+                );
+              }
+              return (
+                <div key={i} className="flex flex-col gap-2">
+                  {msg.results.map((result) => (
+                    <ToolResultSummary
+                      key={result.tool_use_id}
+                      result={result}
+                    />
+                  ))}
                 </div>
-              </div>
-            );
-          }
-          if (msg.role === "assistant") {
-            return (
-              <div key={i} className="flex justify-start">
-                <AssistantBubble msg={msg} />
-              </div>
-            );
-          }
-          return (
-            <div key={i} className="flex flex-col gap-2">
-              {msg.results.map((result) => (
-                <ToolResultSummary
-                  key={result.tool_use_id}
-                  result={result}
-                />
-              ))}
-            </div>
-          );
-        })}
+              );
+            })}
 
-        {error && (
-          <div className="rounded-md bg-red-950/60 px-3 py-2 text-xs text-red-400">
-            {error}
-          </div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
+            {error && (
+              <div className="rounded-md bg-red-950/60 px-3 py-2 text-xs text-red-400">
+                {error}
+              </div>
+            )}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
+      )}
 
       {/* Input */}
       <div className="shrink-0 border-t border-edge p-3">

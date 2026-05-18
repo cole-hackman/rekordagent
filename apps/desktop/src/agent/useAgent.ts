@@ -1,7 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
 import Anthropic from "@anthropic-ai/sdk";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   getApiKey,
+  getAgentModel,
   getClaudeCodeStatus,
   listConversations,
   createConversation,
@@ -18,11 +21,40 @@ import type {
   ConversationSummary,
 } from "./types";
 
-const MODEL = "claude-opus-4-5";
-
 const SYSTEM = `You are a DJ assistant with access to the user's Rekordbox library. \
 Help them search their collection, inspect playlists, and audit their library. \
 When using tools, be concise in the surrounding text — let the results speak for themselves.`;
+
+// ── Claude Code subprocess backend ────────────────────────────────────────────
+
+interface ClaudeStreamEvent {
+  kind: "tool_call" | "text" | "done" | "error";
+  text?: string;
+  tool_name?: string;
+}
+
+function buildSystemWithLibraryPath(libraryPath: string | null): string {
+  const base = SYSTEM;
+  if (!libraryPath) return base;
+  return `${base}\n\nThe active Rekordbox library is at: ${libraryPath}. When calling decks MCP tools, always pass this path as the library_path argument.`;
+}
+
+function buildHistoryText(messages: ChatMessage[]): string {
+  const lines: string[] = [];
+  for (const m of messages) {
+    if (m.role === "user") {
+      lines.push(`Human: ${m.text}`);
+    } else if (m.role === "assistant") {
+      const text = m.blocks
+        .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
+        .map((b) => b.text)
+        .join(" ")
+        .trim();
+      if (text) lines.push(`Assistant: ${text}`);
+    }
+  }
+  return lines.join("\n\n");
+}
 
 // Anthropic API message format
 type ApiMessage = {
@@ -78,6 +110,103 @@ export function useAgent(libraryPath: string | null) {
     [refreshConversations],
   );
 
+  const sendMessageViaClaudeCode = useCallback(
+    async (text: string, conversationId: string | null, priorMessages: ChatMessage[]) => {
+      setIsStreaming(true);
+      const eventId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const assistantMsg: AssistantMessage = { role: "assistant", blocks: [] };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      const unlistenPromise = listen<ClaudeStreamEvent>(
+        `claude-stream:${eventId}`,
+        (event) => {
+          const { kind, text: evText, tool_name } = event.payload;
+          if (kind === "tool_call" && tool_name) {
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last.role !== "assistant") return prev;
+              return [
+                ...msgs.slice(0, -1),
+                {
+                  ...last,
+                  blocks: [
+                    ...last.blocks,
+                    { type: "tool_call" as const, id: tool_name, name: tool_name, input: {} },
+                  ],
+                },
+              ];
+            });
+          } else if (kind === "text" && evText !== undefined) {
+            setMessages((prev) => {
+              const msgs = [...prev];
+              const last = msgs[msgs.length - 1];
+              if (last.role !== "assistant") return prev;
+              const blocks = [...last.blocks];
+              const lastBlock = blocks[blocks.length - 1];
+              if (lastBlock?.type === "text") {
+                blocks[blocks.length - 1] = {
+                  ...lastBlock,
+                  text: lastBlock.text + evText,
+                };
+              } else {
+                blocks.push({ type: "text", text: evText });
+              }
+              return [...msgs.slice(0, -1), { ...last, blocks }];
+            });
+          } else if (kind === "done") {
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                // If we get done and there are no blocks and evText was provided in done (legacy fallback)
+                if (last.blocks.length === 0 && evText) {
+                  const finalMsg = { ...last, blocks: [{ type: "text" as const, text: evText }] };
+                  void persistMessage(conversationId, finalMsg);
+                  return [...prev.slice(0, -1), finalMsg];
+                }
+                void persistMessage(conversationId, last);
+              }
+              return prev;
+            });
+          } else if (kind === "error") {
+            setError(evText ?? "Claude Code error");
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant" && last.blocks.length === 0) {
+                return prev.slice(0, -1);
+              }
+              return prev;
+            });
+          }
+        },
+      );
+
+      try {
+        const system = buildSystemWithLibraryPath(libraryPath);
+        const history = buildHistoryText(priorMessages);
+        await invoke("stream_claude_code_chat", {
+          eventId,
+          history,
+          message: text,
+          system,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && last.blocks.length === 0) {
+            return prev.slice(0, -1);
+          }
+          return prev;
+        });
+      } finally {
+        setIsStreaming(false);
+        (await unlistenPromise)();
+      }
+    },
+    [libraryPath, persistMessage],
+  );
+
   const sendMessage = useCallback(
     async (text: string) => {
       if (!libraryPath || isStreaming) return;
@@ -88,18 +217,19 @@ export function useAgent(libraryPath: string | null) {
       const conversationId = await ensureConversation(text).catch(() => null);
       await persistMessage(conversationId, userMsg);
 
+      const priorMessages = [...messages, userMsg];
+
       const apiKey = await getApiKey("anthropic_api_key").catch(() => null);
       if (!apiKey) {
         const claudeCode = await getClaudeCodeStatus().catch(() => null);
         if (claudeCode?.installed && claudeCode.logged_in) {
-          setError(
-            "Claude Code is installed and signed in, but this chat runtime currently uses Anthropic API keys. Add an API key in Settings while Claude Code runtime support is being wired in.",
-          );
-        } else {
-          setError(
-            "No Anthropic API key set. Add one in Settings (⚙) to use the agent.",
-          );
+          // Route to Claude Code subprocess backend
+          await sendMessageViaClaudeCode(text, conversationId, priorMessages);
+          return;
         }
+        setError(
+          "No Anthropic API key set. Add one in Settings (⚙) to use the agent.",
+        );
         return;
       }
 
@@ -139,9 +269,10 @@ export function useAgent(libraryPath: string | null) {
       };
 
       setIsStreaming(true);
+      const model = await getAgentModel().catch(() => "claude-sonnet-4-6");
       try {
         // agentic loop: keep calling until stop_reason !== "tool_use"
-        let currentMessages = [...messages, userMsg];
+        let currentMessages = priorMessages;
 
         while (true) {
           const assistantMsg: AssistantMessage = {
@@ -151,7 +282,7 @@ export function useAgent(libraryPath: string | null) {
           setMessages((prev) => [...prev, assistantMsg]);
 
           const stream = client.messages.stream({
-            model: MODEL,
+            model,
             max_tokens: 4096,
             system: SYSTEM,
             tools: TOOL_SCHEMAS,
@@ -302,7 +433,7 @@ export function useAgent(libraryPath: string | null) {
         setIsStreaming(false);
       }
     },
-    [libraryPath, isStreaming, messages, ensureConversation, persistMessage],
+    [libraryPath, isStreaming, messages, ensureConversation, persistMessage, sendMessageViaClaudeCode],
   );
 
   const clearMessages = useCallback(() => {

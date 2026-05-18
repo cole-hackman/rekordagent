@@ -172,6 +172,17 @@ pub fn tool_definitions() -> Vec<Value> {
             ),
         ),
         tool_definition(
+            "health_fuzzy_duplicate_scan",
+            "Find likely-duplicate candidates by collapsing remix/feature/parenthetical markers from title and artist. Treat results as candidates needing manual review.",
+            object_schema(
+                &[(
+                    "library_path",
+                    string_schema("Path to the Rekordbox master.db file."),
+                )],
+                &["library_path"],
+            ),
+        ),
+        tool_definition(
             "health_broken_link_scan",
             "Find metadata and link health issues in a Rekordbox library.",
             object_schema(
@@ -193,6 +204,87 @@ pub fn tool_definitions() -> Vec<Value> {
                 &[],
             ),
         ),
+        tool_definition(
+            "library_read_file_tags",
+            "Read the tags embedded in a track's audio file and compare to Rekordbox DB values.",
+            object_schema(
+                &[
+                    (
+                        "library_path",
+                        string_schema("Path to the Rekordbox master.db file."),
+                    ),
+                    ("track_id", string_schema("Rekordbox content ID.")),
+                ],
+                &["library_path", "track_id"],
+            ),
+        ),
+        tool_definition(
+            "library_analyze_track",
+            "Analyze BPM and key for a track from the audio file using stratum-dsp. Results are cached.",
+            object_schema(
+                &[
+                    (
+                        "library_path",
+                        string_schema("Path to the Rekordbox master.db file."),
+                    ),
+                    ("track_id", string_schema("Rekordbox content ID.")),
+                ],
+                &["library_path", "track_id"],
+            ),
+        ),
+        tool_definition(
+            "library_scan_and_propose_missing",
+            "Scan tracks with missing BPM or key, analyze them with stratum-dsp, and stage TrackMetadataEdit changes for each result.",
+            object_schema(
+                &[
+                    (
+                        "library_path",
+                        string_schema("Path to the Rekordbox master.db file."),
+                    ),
+                    (
+                        "fields",
+                        json!({"type": "array", "items": {"type": "string"}, "description": "Fields to check: 'bpm', 'key', or both. Omit or pass empty array for both."}),
+                    ),
+                    (
+                        "limit",
+                        integer_schema("Maximum number of tracks to analyze (default 20)."),
+                    ),
+                ],
+                &["library_path"],
+            ),
+        ),
+        tool_definition(
+            "relocate_scan",
+            "Find relocation candidates for broken/missing files by scanning root directories.",
+            object_schema(
+                &[
+                    (
+                        "library_path",
+                        string_schema("Path to the Rekordbox master.db file."),
+                    ),
+                    (
+                        "search_roots",
+                        json!({"type": "array", "items": {"type": "string"}, "description": "List of absolute directory paths to scan for missing music files."}),
+                    ),
+                ],
+                &["library_path", "search_roots"],
+            ),
+        ),
+        tool_definition(
+            "relocate_apply",
+            "Stage a folder_path update for a broken file.",
+            object_schema(
+                &[
+                    (
+                        "library_path",
+                        string_schema("Path to the Rekordbox master.db file."),
+                    ),
+                    ("track_id", string_schema("Rekordbox track ID.")),
+                    ("new_path", string_schema("The new absolute path to the audio file.")),
+                ],
+                &["library_path", "track_id", "new_path"],
+            ),
+        ),
     ]
 }
 
@@ -207,6 +299,20 @@ pub fn tool_request_from_name_and_arguments(name: &str, arguments: Value) -> Res
             query: required_string(arguments, "query")?,
             limit: optional_usize(arguments, "limit")?,
         }),
+        "library_bulk_add_intro_cues" | "library.bulk_add_intro_cues" => {
+            Ok(ToolRequest::LibraryBulkAddIntroCues {
+                library_path: required_string(arguments, "library_path")?,
+                track_ids: arguments
+                    .get("track_ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+        }
         "library_get_track" | "library.get_track" => Ok(ToolRequest::LibraryGetTrack {
             library_path: required_string(arguments, "library_path")?,
             id: required_string(arguments, "id")?,
@@ -230,6 +336,11 @@ pub fn tool_request_from_name_and_arguments(name: &str, arguments: Value) -> Res
         "health_duplicate_scan" | "health.duplicate_scan" => Ok(ToolRequest::HealthDuplicateScan {
             library_path: required_string(arguments, "library_path")?,
         }),
+        "health_fuzzy_duplicate_scan" | "health.fuzzy_duplicate_scan" => {
+            Ok(ToolRequest::HealthFuzzyDuplicateScan {
+                library_path: required_string(arguments, "library_path")?,
+            })
+        }
         "health_broken_link_scan" | "health.broken_link_scan" => {
             Ok(ToolRequest::HealthBrokenLinkScan {
                 library_path: required_string(arguments, "library_path")?,
@@ -244,6 +355,48 @@ pub fn tool_request_from_name_and_arguments(name: &str, arguments: Value) -> Res
                 output_path: required_string(arguments, "output_path")?,
             })
         }
+        "library_read_file_tags" | "library.read_file_tags" => {
+            Ok(ToolRequest::LibraryReadFileTags {
+                library_path: required_string(arguments, "library_path")?,
+                track_id: required_string(arguments, "track_id")?,
+            })
+        }
+        "library_analyze_track" | "library.analyze_track" => Ok(ToolRequest::LibraryAnalyzeTrack {
+            library_path: required_string(arguments, "library_path")?,
+            track_id: required_string(arguments, "track_id")?,
+        }),
+        "library_scan_and_propose_missing" | "library.scan_and_propose_missing" => {
+            Ok(ToolRequest::LibraryScanAndProposeMissing {
+                library_path: required_string(arguments, "library_path")?,
+                fields: arguments
+                    .get("fields")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                limit: optional_usize(arguments, "limit")?,
+            })
+        }
+        "relocate_scan" | "relocate.scan" => Ok(ToolRequest::RelocateScan {
+            library_path: required_string(arguments, "library_path")?,
+            search_roots: arguments
+                .get("search_roots")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }),
+        "relocate_apply" | "relocate.apply" => Ok(ToolRequest::RelocateApply {
+            library_path: required_string(arguments, "library_path")?,
+            track_id: required_string(arguments, "track_id")?,
+            new_path: required_string(arguments, "new_path")?,
+        }),
         _ => bail!("Unknown tool: {name}"),
     }
 }
@@ -306,10 +459,22 @@ fn is_advertised_tool_alias(name: &str) -> bool {
             | "health.orphan_scan"
             | "health_duplicate_scan"
             | "health.duplicate_scan"
+            | "health_fuzzy_duplicate_scan"
+            | "health.fuzzy_duplicate_scan"
             | "health_broken_link_scan"
             | "health.broken_link_scan"
             | "staging_list_changes"
             | "staging.list_changes"
+            | "library_read_file_tags"
+            | "library.read_file_tags"
+            | "library_analyze_track"
+            | "library.analyze_track"
+            | "library_scan_and_propose_missing"
+            | "library.scan_and_propose_missing"
+            | "relocate_scan"
+            | "relocate.scan"
+            | "relocate_apply"
+            | "relocate.apply"
     )
 }
 

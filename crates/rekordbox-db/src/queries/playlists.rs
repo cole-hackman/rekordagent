@@ -44,6 +44,18 @@ pub fn by_id(conn: &Connection, id: &str) -> Result<Option<Playlist>> {
     }
 }
 
+/// Return the distinct set of track/content IDs that appear in any
+/// playlist (including folders' descendant playlists, since every entry
+/// in djmdSongPlaylist points directly at its containing playlist).
+/// Used by the UI to power a "not in any playlist" filter.
+pub fn track_ids_in_any_playlist(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT ContentID FROM djmdSongPlaylist WHERE ContentID IS NOT NULL")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
+}
+
 pub fn entries(conn: &Connection, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
     let mut stmt = conn.prepare(
         "SELECT PlaylistID, ContentID, TrackNo
@@ -129,5 +141,19 @@ mod tests {
         let conn = create_test_db(&path).unwrap();
         let entries = entries(&conn, "9999").unwrap();
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn track_ids_in_any_playlist_distinct() {
+        let path = make_db();
+        let conn = create_test_db(&path).unwrap();
+        let ids = track_ids_in_any_playlist(&conn).unwrap();
+        // Seed places at least one track in a playlist; result must be
+        // distinct and non-empty.
+        assert!(!ids.is_empty(), "seed should put tracks in playlists");
+        let mut sorted = ids.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len(), "result must be distinct");
     }
 }

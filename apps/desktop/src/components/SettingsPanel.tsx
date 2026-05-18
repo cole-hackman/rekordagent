@@ -7,9 +7,18 @@ import {
   getApiKey,
   setApiKey,
   deleteApiKey,
+  getAgentModel,
+  setAgentModel,
   getClaudeCodeStatus,
+  type AgentModel,
   type ClaudeCodeStatus,
 } from "../ipc";
+
+const MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
+  { value: "claude-sonnet-4-6", label: "Sonnet 4.6 — recommended" },
+  { value: "claude-opus-4-7", label: "Opus 4.7 — most capable" },
+  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5 — fastest" },
+];
 import { useAppStore } from "../store/appStore";
 import { useToast } from "./Toast";
 
@@ -33,6 +42,7 @@ export function SettingsPanel({ onClose }: Props) {
   const [keySaved, setKeySaved] = useState(false);
   const [claudeCodeStatus, setClaudeCodeStatus] =
     useState<ClaudeCodeStatus | null>(null);
+  const [agentModel, setAgentModelState] = useState<AgentModel>("claude-sonnet-4-6");
 
   useEffect(() => {
     getApiKey("anthropic_api_key")
@@ -41,6 +51,10 @@ export function SettingsPanel({ onClose }: Props) {
       })
       .catch(() => {})
       .finally(() => setKeyLoaded(true));
+
+    getAgentModel()
+      .then((m) => setAgentModelState(m))
+      .catch(() => {});
 
     getClaudeCodeStatus()
       .then(setClaudeCodeStatus)
@@ -253,11 +267,11 @@ export function SettingsPanel({ onClose }: Props) {
             ) : (
               <p className="mt-2 text-ink-secondary">Not signed in to Claude Code.</p>
             )}
-            <p className="mt-2 text-ink-muted">
-              Current chat runtime still uses Anthropic API keys. Claude Code
-              subscription support is detected here but is not wired to chat
-              yet.
-            </p>
+            {claudeCodeStatus.logged_in ? (
+              <p className="mt-2 text-green-400/80 text-[11px]">
+                Chat will use your Claude Code subscription — no API key needed.
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-md border border-edge bg-elevated p-3 text-xs text-ink-secondary">
@@ -265,6 +279,39 @@ export function SettingsPanel({ onClose }: Props) {
             Anthropic API keys.
           </div>
         )}
+      </section>
+
+      {/* Agent model */}
+      <section className={onClose ? "px-5 py-4" : "py-6"}>
+        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+          Agent Model
+        </h3>
+        <label className="mb-1.5 block text-xs text-ink-secondary">
+          Anthropic model used for chat
+        </label>
+        <select
+          aria-label="Agent model"
+          value={agentModel}
+          onChange={(e) => {
+            const next = e.target.value as AgentModel;
+            setAgentModelState(next);
+            void setAgentModel(next).catch((err) => {
+              const detail = err instanceof Error ? err.message : String(err);
+              toast({ variant: "error", message: "Could not save model", detail });
+            });
+          }}
+          className="w-full rounded-md border border-edge-strong bg-surface px-3 py-1.5 text-sm text-ink focus:border-accent focus:outline-none"
+        >
+          {MODEL_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-[11px] text-ink-faint">
+          Applies to API-key chat. Claude Code subscription chat uses your Claude
+          Code account's default model.
+        </p>
       </section>
 
       {/* API Keys */}

@@ -44,6 +44,50 @@ export interface BrokenMetadataReport {
   suspicious: Track[];
 }
 
+export interface LibraryAnalytics {
+  total_tracks: number;
+  genre_distribution: Record<string, number>;
+  bpm_histogram: Record<number, number>;
+  key_distribution: Record<string, number>;
+}
+
+/** Mirrors `audio_tags::TrackTags`. */
+export interface TrackTags {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  genre: string | null;
+  bpm: number | null;
+  musical_key: string | null;
+  comment: string | null;
+  year: number | null;
+  rating: number | null;
+  duration_secs: number | null;
+  file_type: string | null;
+}
+
+/** Mirrors `audio_tags::TagWriteFields`. */
+export interface TagWriteFields {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  genre?: string | null;
+  bpm?: number | null;
+  musical_key?: string | null;
+  comment?: string | null;
+  year?: number | null;
+}
+
+/** Mirrors `audio_analysis::AnalysisResult`. */
+export interface AnalysisResult {
+  bpm: number;
+  musical_key: string;
+  confidence: number;
+  bpm_confidence: number;
+  key_confidence: number;
+  cached: boolean;
+}
+
 /** Mirrors `rekordbox_db::types::Track` (serde snake_case). */
 export interface Track {
   id: string;
@@ -63,4 +107,48 @@ export interface Track {
   bit_rate: number | null;
   release_year: number | null;
   dj_play_count: number | null;
+}
+
+export interface BeatGridEntry {
+  beat_number: number;
+  tempo_bpm_x100: number;
+  time_ms: number;
+}
+
+export type WaveformColor =
+  | { type: "Blue"; value: number }
+  | { type: "Rgb"; value: [number, number, number] };
+
+export interface PreviewPoint {
+  height: number;
+  color: WaveformColor;
+}
+
+export interface DetailPoint {
+  height: number;
+  color: WaveformColor;
+}
+
+export interface AnlzWaveform {
+  preview: PreviewPoint[];
+  detail: DetailPoint[];
+  beat_grid: BeatGridEntry[];
+  peaks: number[] | null;
+}
+
+export interface RelocateMatch {
+  path: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface RelocateCandidate {
+  track_id: string;
+  original_path: string;
+  matches: RelocateMatch[];
+}
+
+export interface TransitionScore {
+  score: number;
+  reasons: string[];
 }

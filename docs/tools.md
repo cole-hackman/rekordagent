@@ -316,12 +316,6 @@ _Not yet implemented._
 
 ---
 
-## Live tools (Phase 5)
-
-_Not yet implemented._
-
----
-
-## Plugin tools (Phase 6)
+## Plugin tools (Phase 5)
 
 _Not yet implemented._

@@ -8,6 +8,10 @@ pub enum ToolRequest {
         query: String,
         limit: Option<usize>,
     },
+    LibraryBulkAddIntroCues {
+        library_path: String,
+        track_ids: Vec<String>,
+    },
     LibraryGetTrack {
         library_path: String,
         id: String,
@@ -29,6 +33,9 @@ pub enum ToolRequest {
     HealthDuplicateScan {
         library_path: String,
     },
+    HealthFuzzyDuplicateScan {
+        library_path: String,
+    },
     HealthBrokenLinkScan {
         library_path: String,
     },
@@ -38,5 +45,29 @@ pub enum ToolRequest {
     ExportAcceptedChanges {
         library_path: String,
         output_path: String,
+    },
+    LibraryReadFileTags {
+        library_path: String,
+        track_id: String,
+    },
+    LibraryAnalyzeTrack {
+        library_path: String,
+        track_id: String,
+    },
+    LibraryScanAndProposeMissing {
+        library_path: String,
+        #[serde(default)]
+        fields: Vec<String>,
+        limit: Option<usize>,
+    },
+    RelocateScan {
+        library_path: String,
+        #[serde(default)]
+        search_roots: Vec<String>,
+    },
+    RelocateApply {
+        library_path: String,
+        track_id: String,
+        new_path: String,
     },
 }

@@ -32,6 +32,19 @@ Thumbs.db
 # Build artifacts
 *.log
 
+# Test artifacts
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+
+# TypeScript incremental build
+*.tsbuildinfo
+
 # Generated synthetic fixtures
 fixtures/tiny-library/master.db
 fixtures/tiny-library/music/
+
+# Real Rekordbox fixtures (do not commit!)
+fixtures/master.db
+fixtures/anlz/
+fixtures/audio-dupes/
+fixtures/pdb/

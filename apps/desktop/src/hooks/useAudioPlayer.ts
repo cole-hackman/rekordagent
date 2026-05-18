@@ -1,10 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
-import { playTrack, pauseAudio, resumeAudio } from "../ipc";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { listen } from "@tauri-apps/api/event";
+import {
+  playTrack,
+  pauseAudio,
+  resumeAudio,
+  getPlaybackStatus,
+  seekAudio,
+} from "../ipc";
 import type { Track } from "../types";
+
+const POLL_MS = 250;
 
 export function useAudioPlayer(selectedTrack: Track | null) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPath, setCurrentPath] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const stoppedRef = useRef(false);
 
   const play = useCallback(async (track: Track) => {
     if (!track.folder_path) return;
@@ -12,6 +24,8 @@ export function useAudioPlayer(selectedTrack: Track | null) {
       await playTrack(track.folder_path);
       setIsPlaying(true);
       setCurrentPath(track.folder_path);
+      setCurrentTime(0);
+      stoppedRef.current = false;
     } catch (e) {
       console.error("play error", e);
     }
@@ -46,20 +60,47 @@ export function useAudioPlayer(selectedTrack: Track | null) {
     }
   }, [selectedTrack, currentPath, isPlaying, play, pause, resume]);
 
+  const seek = useCallback(async (targetSecs: number) => {
+    try {
+      await seekAudio(targetSecs);
+      setCurrentTime(targetSecs);
+    } catch (e) {
+      console.error("seek error", e);
+    }
+  }, []);
+
+  // Poll backend for playback time/duration while a track is loaded.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
-      e.preventDefault();
-      void toggleCurrent();
+    if (!currentPath) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const status = await getPlaybackStatus();
+        if (cancelled) return;
+        setIsPlaying(status.is_playing);
+        setCurrentTime(status.time);
+        setDuration(status.duration);
+      } catch {
+        // Tauri may not be ready or command may fail in tests — ignore.
+      }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleCurrent]);
+    void tick();
+    const id = window.setInterval(() => void tick(), POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [currentPath]);
+
+  // Backend emits `playback-ended` when the source drains naturally.
+  useEffect(() => {
+    const unlistenPromise = listen("playback-ended", () => {
+      setIsPlaying(false);
+    });
+    return () => {
+      void unlistenPromise.then((un) => un());
+    };
+  }, []);
 
   const isCurrentTrack = useCallback(
     (track: Track) =>
@@ -67,5 +108,16 @@ export function useAudioPlayer(selectedTrack: Track | null) {
     [currentPath],
   );
 
-  return { isPlaying, currentPath, play, pause, resume, toggleCurrent, isCurrentTrack };
+  return {
+    isPlaying,
+    currentPath,
+    currentTime,
+    duration,
+    play,
+    pause,
+    resume,
+    toggleCurrent,
+    seek,
+    isCurrentTrack,
+  };
 }

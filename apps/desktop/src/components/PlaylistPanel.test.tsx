@@ -110,6 +110,40 @@ describe("PlaylistPanel", () => {
     expect(screen.getByText("Reference")).toBeInTheDocument();
   });
 
+  it("shows a DUP badge and duplicate count for repeated tracks", async () => {
+    const track = {
+      id: "1",
+      title: "Dark Matter",
+      artist: "Surgeon",
+      album: null,
+      genre: "Techno",
+      musical_key: "8A",
+      bpm: 140,
+      duration_secs: 360,
+      rating: null,
+      comment: null,
+      folder_path: null,
+      analysis_data_path: null,
+      file_type: null,
+      sample_rate: null,
+      bit_rate: null,
+      release_year: null,
+      dj_play_count: null,
+    };
+    vi.mocked(getPlaylist).mockResolvedValue({
+      playlist: { id: "2", name: "Techno Set", kind: "Playlist", parent_id: null, seq: 1 },
+      tracks: [track, track], // same track twice — legitimate Rekordbox dupe
+    });
+
+    render(<PlaylistPanel libraryPath="/db" />, { wrapper });
+    await screen.findByText("Techno Set");
+
+    // Second occurrence gets a DUP badge.
+    expect(await screen.findByText("DUP")).toBeInTheDocument();
+    // Header reports the duplicate count.
+    expect(screen.getByText(/1 duplicate/)).toBeInTheDocument();
+  });
+
   it("flattens hierarchy while filtering", async () => {
     vi.mocked(listPlaylists).mockResolvedValue([
       { id: "1", name: "Gigs", kind: "Folder", parent_id: null, seq: 1 },

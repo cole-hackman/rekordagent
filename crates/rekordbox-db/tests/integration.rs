@@ -228,6 +228,53 @@ fn broken_metadata_report_finds_missing_core_fields() {
     assert!(report.missing_genre.iter().any(|t| t.id == "broken-1"));
 }
 
+// ── Analytics ──────────────────────────────────────────────────────────────
+
+#[test]
+fn library_analytics_excludes_deleted_and_distributes_by_genre_key_bpm() {
+    let (_p, db) = make_fixture_db();
+    let a = db.library_analytics().expect("analytics");
+
+    // Seed has 4 djmdContent rows, 1 of which has rb_local_deleted = 1.
+    assert_eq!(a.total_tracks, 3);
+
+    // Genres: tracks 1 & 3 are Techno, track 2 is House. Deleted track excluded.
+    assert_eq!(a.genre_distribution.get("Techno").copied(), Some(2));
+    assert_eq!(a.genre_distribution.get("House").copied(), Some(1));
+
+    // Keys: tracks 1 & 3 use 8A, track 2 uses 11B.
+    assert_eq!(a.key_distribution.get("8A").copied(), Some(2));
+    assert_eq!(a.key_distribution.get("11B").copied(), Some(1));
+
+    // BPM bucketed by floor of BPM/100 (seed stores BPM*100).
+    assert_eq!(a.bpm_histogram.get(&132).copied(), Some(1));
+    assert_eq!(a.bpm_histogram.get(&128).copied(), Some(1));
+    assert_eq!(a.bpm_histogram.get(&140).copied(), Some(1));
+    // Deleted track's BPM (128) should not double-count.
+    assert_eq!(a.bpm_histogram.values().sum::<usize>(), 3);
+}
+
+#[test]
+fn library_analytics_skips_null_and_empty_genre_key() {
+    // Insert a track with NULL genre/key/BPM so we can assert those don't break the
+    // aggregation or get counted as empty-string buckets.
+    let extra = "INSERT INTO djmdContent
+            (ID, Title, ArtistID, AlbumID, GenreID, KeyID, BPM, Length, Rating, Commnt,
+             FolderPath, AnalysisDataPath, rb_local_deleted)
+        VALUES
+            (99, 'No Metadata', 1, 1, NULL, NULL, NULL, 200, 0, NULL,
+             '/music/none.mp3', NULL, 0);";
+    let (_p, db) = make_fixture_db_with_extra(extra);
+    let a = db.library_analytics().expect("analytics");
+
+    assert_eq!(a.total_tracks, 4);
+    // No empty-string keys should appear in the distributions.
+    assert!(!a.genre_distribution.contains_key(""));
+    assert!(!a.key_distribution.contains_key(""));
+    // BPM histogram must not gain a 0 bucket from the NULL row.
+    assert!(!a.bpm_histogram.contains_key(&0));
+}
+
 // ── ANLZ beat grid ─────────────────────────────────────────────────────────
 
 #[test]

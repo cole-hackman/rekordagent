@@ -65,6 +65,16 @@ pub const MIGRATIONS: &[(u32, &str)] = &[
             ON staged_changes(library_path, status, updated_at DESC);
         ",
     ),
+    (
+        4,
+        "
+        CREATE TABLE IF NOT EXISTS audio_fingerprints (
+            track_uri       TEXT    PRIMARY KEY,
+            chroma_hash     BLOB    NOT NULL,
+            created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        ",
+    ),
 ];
 
 pub fn current_version(conn: &rusqlite::Connection) -> anyhow::Result<u32> {
@@ -148,6 +158,21 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM conversation_messages", [], |r| {
                 r.get(0)
             })
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn audio_fingerprints_table_exists_after_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        run(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO audio_fingerprints (track_uri, chroma_hash)
+             VALUES ('file:///test.mp3', x'00112233');",
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM audio_fingerprints", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
     }

@@ -1,6 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeftIcon } from "lucide-react";
 import { usePlaylistDetail, usePlaylists } from "../hooks/usePlaylists";
+import { findDuplicates } from "../lib/playlist-dedupe";
 import type { Playlist, Track } from "../types";
+
+function formatDuration(secs: number | null): string {
+  if (secs == null || secs <= 0) return "—";
+  const m = Math.floor(secs / 60);
+  const s = String(secs % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function missingFieldsLabel(t: Track): string {
+  const missing: string[] = [];
+  if (!t.artist || t.artist.trim() === "") missing.push("artist");
+  if (t.bpm == null || t.bpm <= 0) missing.push("BPM");
+  if (!t.musical_key) missing.push("key");
+  if (!t.genre) missing.push("genre");
+  return missing.length === 0 ? "" : `Missing: ${missing.join(", ")}`;
+}
 
 interface Props {
   libraryPath: string;
@@ -86,6 +104,7 @@ export function PlaylistPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [didInitExpanded, setDidInitExpanded] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
   const { data: playlists = [], isLoading, error } = usePlaylists(libraryPath);
 
   const tree = useMemo(() => buildTree(playlists), [playlists]);
@@ -166,43 +185,65 @@ export function PlaylistPanel({
       data-testid="playlist-panel"
       className="flex min-h-0 flex-1 border-b border-edge bg-base"
     >
-      <div className="flex w-64 shrink-0 flex-col border-r border-edge">
-        <div className="border-b border-edge p-2">
-          <input
-            type="search"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter playlists…"
-            className="w-full rounded-md border border-edge-strong bg-surface px-2 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
-          />
+      {!sidebarHidden && (
+        <div className="flex w-64 shrink-0 flex-col border-r border-edge">
+          <div className="border-b border-edge p-2">
+            <input
+              type="search"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Filter playlists…"
+              className="w-full rounded-md border border-edge-strong bg-surface px-2 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto py-1">
+            {visibleRows.length === 0 ? (
+              <p className="p-4 text-sm text-ink-muted">No playlists found.</p>
+            ) : (
+              visibleRows.map((node) => {
+                const p = node.playlist;
+                const folder = isFolder(p);
+                const isOpen = folder && expanded.has(p.id);
+                return (
+                  <PlaylistRow
+                    key={p.id}
+                    node={node}
+                    isFolder={folder}
+                    isOpen={isOpen}
+                    isSelected={!folder && selectedId === p.id}
+                    onClick={() => {
+                      if (folder) toggleFolder(p.id);
+                      else setSelectedId(p.id);
+                    }}
+                  />
+                );
+              })
+            )}
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto py-1">
-          {visibleRows.length === 0 ? (
-            <p className="p-4 text-sm text-ink-muted">No playlists found.</p>
-          ) : (
-            visibleRows.map((node) => {
-              const p = node.playlist;
-              const folder = isFolder(p);
-              const isOpen = folder && expanded.has(p.id);
-              return (
-                <PlaylistRow
-                  key={p.id}
-                  node={node}
-                  isFolder={folder}
-                  isOpen={isOpen}
-                  isSelected={!folder && selectedId === p.id}
-                  onClick={() => {
-                    if (folder) toggleFolder(p.id);
-                    else setSelectedId(p.id);
-                  }}
-                />
-              );
-            })
-          )}
-        </div>
-      </div>
+      )}
 
       <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="sticky top-0 z-20 flex h-10 items-center border-b border-edge bg-base/80 px-2 backdrop-blur-md">
+          <button
+            onClick={() => setSidebarHidden(!sidebarHidden)}
+            className="group flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-elevated hover:text-ink"
+            title={sidebarHidden ? "Show playlist browser" : "Hide playlist browser"}
+          >
+            <ChevronLeftIcon
+              className={[
+                "h-4 w-4 transition-transform duration-200",
+                sidebarHidden ? "rotate-180" : "",
+              ].join(" ")}
+            />
+          </button>
+          {!sidebarHidden && <div className="h-4 w-px bg-edge-strong ml-1 mr-3" />}
+          {detail?.playlist && (
+            <h2 className="truncate text-[13px] font-semibold text-ink">
+              {detail.playlist.name}
+            </h2>
+          )}
+        </div>
         {detailLoading ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-5 w-5 animate-spin rounded-full border border-edge-strong border-t-accent-hover" />
@@ -213,51 +254,14 @@ export function PlaylistPanel({
           </div>
         ) : detail.tracks.length === 0 ? (
           <div className="p-4">
-            <h2 className="text-sm font-semibold text-ink">
-              {detail.playlist.name}
-            </h2>
             <p className="mt-2 text-sm text-ink-muted">No tracks in this playlist.</p>
           </div>
         ) : (
-          <div>
-            <div className="sticky top-0 border-b border-edge bg-base px-4 py-2">
-              <h2 className="truncate text-sm font-semibold text-ink">
-                {detail.playlist.name}
-              </h2>
-              <p className="text-xs text-ink-muted">
-                <span className="font-mono tabular-nums">
-                  {detail.tracks.length.toLocaleString()}
-                </span>{" "}
-                tracks
-              </p>
-            </div>
-            {detail.tracks.map((track, index) => (
-              <button
-                key={`${track.id}-${index}`}
-                type="button"
-                onClick={() => onSelectTrack?.(track)}
-                className={`grid w-full cursor-pointer grid-cols-[3rem_minmax(0,1fr)_9rem_4rem_4rem] gap-3 border-b border-edge/60 px-4 py-2 text-left text-sm transition-colors ${
-                  track.id === selectedTrackId
-                    ? "bg-accent-dim/40 hover:bg-accent-dim/50"
-                    : "hover:bg-elevated/60"
-                }`}
-              >
-                <span className="text-right font-mono tabular-nums text-xs text-ink-faint">
-                  {index + 1}
-                </span>
-                <span className="truncate text-ink">{track.title}</span>
-                <span className="truncate text-ink-secondary">
-                  {track.artist ?? "—"}
-                </span>
-                <span className="text-right font-mono tabular-nums text-[13px] text-ink-secondary">
-                  {track.bpm != null && track.bpm > 0 ? track.bpm.toFixed(1) : "—"}
-                </span>
-                <span className="text-center font-mono tabular-nums text-[13px] text-ink-secondary">
-                  {track.musical_key ?? "—"}
-                </span>
-              </button>
-            ))}
-          </div>
+          <PlaylistTrackList
+            tracks={detail.tracks}
+            selectedTrackId={selectedTrackId ?? null}
+            onSelectTrack={onSelectTrack}
+          />
         )}
       </div>
     </div>
@@ -347,5 +351,113 @@ function PlaylistRow({
         </span>
       )}
     </button>
+  );
+}
+
+function PlaylistTrackList({
+  tracks,
+  selectedTrackId,
+  onSelectTrack,
+}: {
+  tracks: Track[];
+  selectedTrackId: string | null;
+  onSelectTrack?: (track: Track) => void;
+}) {
+  const dupes = findDuplicates(tracks);
+  return (
+    <div>
+      <div className="border-b border-edge bg-base px-4 py-2.5">
+        <p className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-muted">
+          <span>
+            <span className="font-mono tabular-nums">
+              {tracks.length.toLocaleString()}
+            </span>{" "}
+            tracks
+          </span>
+          {dupes.duplicateRowCount > 0 && (
+            <span
+              className="rounded-full border border-accent/40 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-accent-hover"
+              title={`${dupes.duplicateRowCount} duplicate ${dupes.duplicateRowCount === 1 ? "row" : "rows"} (real playlist entries in Rekordbox)`}
+            >
+              {dupes.duplicateRowCount}{" "}
+              {dupes.duplicateRowCount === 1 ? "duplicate" : "duplicates"}
+            </span>
+          )}
+        </p>
+      </div>
+      {/* Column header */}
+      <div className="sticky top-0 z-[5] grid grid-cols-[2rem_1rem_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1fr)_3.5rem_2.75rem_3rem_3rem] gap-2 border-b border-edge bg-surface px-4 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
+        <span className="text-right">#</span>
+        <span aria-hidden></span>
+        <span>Title</span>
+        <span>Artist</span>
+        <span>Genre</span>
+        <span className="text-right">BPM</span>
+        <span className="text-center">Key</span>
+        <span className="text-right">Time</span>
+        <span className="text-right">Year</span>
+      </div>
+      {tracks.map((track, index) => {
+        const rank = dupes.duplicateRanks.get(index) ?? 1;
+        const isDup = rank >= 2;
+        const missingLabel = missingFieldsLabel(track);
+        return (
+          <button
+            key={`${track.id}-${index}`}
+            type="button"
+            onClick={() => onSelectTrack?.(track)}
+            className={`grid w-full cursor-pointer grid-cols-[2rem_1rem_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1fr)_3.5rem_2.75rem_3rem_3rem] gap-2 border-b border-edge/30 px-4 py-1.5 text-left text-[12px] leading-tight transition-colors ${
+              track.id === selectedTrackId
+                ? "bg-accent-dim/40 hover:bg-accent-dim/50"
+                : "hover:bg-elevated/60"
+            }`}
+          >
+            <span className="text-right font-mono tabular-nums text-[11px] text-ink-faint">
+              {index + 1}
+            </span>
+            <span
+              aria-hidden
+              title={missingLabel}
+              className={`flex items-center justify-center ${missingLabel ? "" : "opacity-0"}`}
+            >
+              {missingLabel && (
+                <span className="block h-1.5 w-1.5 rounded-full bg-status-warn" />
+              )}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-ink">{track.title}</span>
+              {isDup && (
+                <span
+                  className="shrink-0 rounded border border-accent/40 px-1 font-mono text-[9px] uppercase tracking-wider text-accent-hover"
+                  title="Second or later occurrence of this track in the playlist"
+                >
+                  DUP
+                </span>
+              )}
+            </span>
+            <span className="truncate text-ink-secondary">
+              {track.artist ?? "—"}
+            </span>
+            <span className="truncate text-ink-secondary">
+              {track.genre ?? "—"}
+            </span>
+            <span className="text-right font-mono tabular-nums text-[11px] text-ink-secondary">
+              {track.bpm != null && track.bpm > 0 ? track.bpm.toFixed(1) : "—"}
+            </span>
+            <span className="text-center font-mono tabular-nums text-[11px] text-ink-secondary">
+              {track.musical_key ?? "—"}
+            </span>
+            <span className="text-right font-mono tabular-nums text-[11px] text-ink-secondary">
+              {formatDuration(track.duration_secs)}
+            </span>
+            <span className="text-right font-mono tabular-nums text-[11px] text-ink-secondary">
+              {track.release_year != null && track.release_year > 0
+                ? track.release_year
+                : "—"}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

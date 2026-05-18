@@ -1,8 +1,10 @@
+use agent_tools::http::run_http;
 use agent_tools::mcp::{run_stdio, tool_request_from_name_and_arguments};
 use agent_tools::AgentToolService;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use serde_json::{Map, Value};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -17,12 +19,24 @@ struct Cli {
 enum Commands {
     /// Run the local stdio MCP server.
     Mcp(McpArgs),
+    /// Run the local HTTP MCP development server.
+    McpHttp(McpHttpArgs),
     /// Diagnostic access to agent tools.
     Tools(ToolsArgs),
 }
 
 #[derive(Debug, Args)]
 struct McpArgs {
+    /// Path to the staged-change cache database.
+    #[arg(long, value_name = "PATH")]
+    cache: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct McpHttpArgs {
+    /// Local address for the HTTP MCP listener.
+    #[arg(long, default_value = "127.0.0.1:8787")]
+    bind: SocketAddr,
     /// Path to the staged-change cache database.
     #[arg(long, value_name = "PATH")]
     cache: Option<PathBuf>,
@@ -60,6 +74,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Mcp(args) => run_stdio(service(args.cache)),
+        Commands::McpHttp(args) => run_http(service(args.cache), args.bind),
         Commands::Tools(args) => match args.command {
             ToolsCommand::Call(args) => call_tool(args),
         },

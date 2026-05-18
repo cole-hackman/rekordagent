@@ -1,10 +1,16 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Track, HotCue } from "../types";
+import type { Track, HotCue, AnalysisResult } from "../types";
 
 vi.mock("../hooks/useTrackCues");
 import { useTrackCues } from "../hooks/useTrackCues";
+
+vi.mock("../ipc", () => ({
+  analyzeTrack: vi.fn(),
+  stageChange: vi.fn(),
+}));
+import { analyzeTrack, stageChange } from "../ipc";
 
 import { TrackDetailPanel } from "./TrackDetailPanel";
 
@@ -39,12 +45,23 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+const ANALYSIS: AnalysisResult = {
+  bpm: 132.0,
+  musical_key: "9B",
+  confidence: 0.87,
+  bpm_confidence: 0.9,
+  key_confidence: 0.84,
+  cached: false,
+};
+
 beforeEach(() => {
   vi.mocked(useTrackCues).mockReturnValue({
     data: CUES,
     isLoading: false,
     error: null,
   } as unknown as ReturnType<typeof useTrackCues>);
+  vi.mocked(analyzeTrack).mockResolvedValue(ANALYSIS);
+  vi.mocked(stageChange).mockResolvedValue(undefined as never);
 });
 
 describe("TrackDetailPanel", () => {
@@ -147,5 +164,85 @@ describe("TrackDetailPanel", () => {
     const noPathTrack = { ...BASE_TRACK, folder_path: null };
     render(<TrackDetailPanel track={noPathTrack} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
     expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
+  });
+
+  it("shows Analyze button only when track has folder_path", () => {
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    expect(screen.getByRole("button", { name: /analyze/i })).toBeInTheDocument();
+  });
+
+  it("hides Analyze button when track has no folder_path", () => {
+    const noPathTrack = { ...BASE_TRACK, folder_path: null };
+    render(<TrackDetailPanel track={noPathTrack} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    expect(screen.queryByRole("button", { name: /analyze/i })).not.toBeInTheDocument();
+  });
+
+  it("calls analyzeTrack with correct args when Analyze is clicked", async () => {
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    await waitFor(() => expect(analyzeTrack).toHaveBeenCalledWith("/tmp/master.db", "1"));
+  });
+
+  it("disables Analyze button while analysis is in flight", async () => {
+    let resolve: (v: AnalysisResult) => void;
+    vi.mocked(analyzeTrack).mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /analyze/i })).toBeDisabled());
+    resolve!(ANALYSIS);
+  });
+
+  it("renders Analysis section with BPM and key after analysis completes", async () => {
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    // The Analysis section heading only appears once analysis state is set.
+    await waitFor(() => expect(screen.getByText("Analysis")).toBeInTheDocument());
+    // BPM and key values appear inside inline spans alongside "BPM"/"key" labels.
+    expect(screen.getByText(/132\.0.*BPM|BPM.*132\.0/s)).toBeInTheDocument();
+    expect(screen.getByText(/9B.*key|key.*9B/s)).toBeInTheDocument();
+  });
+
+  it("shows 'Propose BPM' button when analysis BPM differs from track BPM", async () => {
+    // BASE_TRACK.bpm is 140.0; analysis returns 132.0 — differs by >0.5
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /propose bpm/i })).toBeInTheDocument());
+  });
+
+  it("shows 'Propose key' button when analysis key differs from track key", async () => {
+    // BASE_TRACK.musical_key is "8A"; analysis returns "9B"
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /propose key/i })).toBeInTheDocument());
+  });
+
+  it("calls stageChange with TrackMetadataEdit when Propose BPM is clicked", async () => {
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    await waitFor(() => screen.getByRole("button", { name: /propose bpm/i }));
+    fireEvent.click(screen.getByRole("button", { name: /propose bpm/i }));
+    await waitFor(() =>
+      expect(stageChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "TrackMetadataEdit",
+          target_id: "1",
+          field: "bpm",
+          new_value: 132.0,
+        }),
+      ),
+    );
+  });
+
+  it("does not show Propose buttons when analysis matches track values", async () => {
+    const matchingAnalysis: AnalysisResult = {
+      ...ANALYSIS,
+      bpm: 140.0,
+      musical_key: "8A",
+    };
+    vi.mocked(analyzeTrack).mockResolvedValue(matchingAnalysis);
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /analyze/i }));
+    await waitFor(() => expect(screen.getByText(/140\.0/)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /propose/i })).not.toBeInTheDocument();
   });
 });

@@ -233,27 +233,86 @@ The app still feels like a web dashboard in a desktop shell. Root causes:
 
 ## Phased Implementation Plan
 
-### Phase 1 — Design foundation
-1. Add `Instrument Sans` + `IBM Plex Mono` to `index.html` via Google Fonts preconnect
-2. Extend `tailwind.config.ts` with custom font families and token color references
-3. Define CSS token variables in `index.css`
-4. Swap accent color from indigo → amber throughout all components
-5. Apply IBM Plex Mono to all numeric columns (BPM, Key, Duration, cue times, counts)
+### Phase 1 — Design foundation ✓ Shipped 2026-05-11
+1. ✓ Add `Instrument Sans` + `IBM Plex Mono` via `@fontsource` packages
+2. ✓ Extend `tailwind.config.ts` with custom font families and token color references
+3. ✓ Define CSS token variables in `index.css` (space-separated RGB, Tailwind opacity-modifier compatible)
+4. ✓ Swap accent color from indigo → amber throughout all components
+5. ✓ Apply IBM Plex Mono to all numeric columns (BPM, Key, Duration, cue times, counts)
 
-### Phase 2 — Navigation & IA
-6. Add left sidebar component (Library, Playlists, Changes, Audit, Settings)
-7. Remove Playlists/Details/Changes toggles from header; header → brand + search + status
-8. Move Settings from fixed overlay to left-nav destination view
-9. Add `data-tauri-drag-region` to header; configure frameless window if desired
+### Phase 2 — Navigation & IA ✓ Shipped 2026-05-11
+6. ✓ Left sidebar component (Library, Playlists, Changes, Audit, Settings) with icon + label rows
+7. ✓ Remove old tab toggles from header; header → brand + search + status
+8. ✓ Settings as a left-nav destination view
+9. ✓ `data-tauri-drag-region` on header; `titleBarStyle: Overlay` frameless window
 
-### Phase 3 — Panel & data polish
-10. Standardize right panel widths (all 320px); add `translate-x` slide-in transition
-11. Replace waveform placeholder with cue position bar (colored dots from existing cue data)
-12. Add bottom status bar (library, audio, export, agent states)
-13. Improve TrackDetailPanel section headers and metadata layout
+### Phase 3 — Panel & data polish ✓ Shipped 2026-05-11
+10. ✓ Standardized right panel widths; `translate-x` slide-in transition
+11. ✓ Cue position bar with colored dots from existing cue data (waveform placeholder replaced)
+12. ✓ Bottom status bar (library path, track count, audio playback state)
+13. ✓ TrackDetailPanel section headers and metadata layout improved
 
-### Phase 4 — State & feedback
-14. Implement Toast/notification system
-15. Improve empty/error/loading states with task-oriented content and copy-details
-16. Group DiffReviewPanel by track with per-group accept-all
-17. Keyboard navigation: `j/k` row movement, `/` search focus, `Escape` panel close, `Space` play
+### Phase 4 — State & feedback ✓ Shipped 2026-05-11
+14. ✓ Toast/notification system (`useToast` hook, `Toast.tsx`, bottom-right auto-dismiss)
+15. ✓ Empty/error/loading states with task-oriented copy
+16. ✓ DiffReviewPanel grouped by track with per-group accept-all
+17. ✓ Keyboard navigation: `j/k` row movement, `/` search focus, `Escape` panel close, `Space` play/pause
+
+### Phase 5 — Density, Filters, and Chat Polish ✓ Shipped 2026-05-11
+
+**Track table density (second polish pass):**
+- 28px row height (was 36px); 11px mono tabular numerics; borders `border-edge/30`
+- SVG sort chevrons replacing text indicators; no header hover background
+
+**Labeled sidebar:**
+- Width 56px → 176px (`w-44`); horizontal icon + label rows at h-9
+- 3px amber active rule; `decks · 0.1.0` version footer
+
+**Structured filter system:**
+- `src/lib/filters.ts` — `Filters` type, `applyFilters()` pure predicate stack, `activeFilterCount()`
+- `FilterDrawer` slide-in panel: BPM range, year range, key/genre multi-select pills, missing-metadata toggles, has-cues tri-state, not-in-any-playlist, comment-contains
+- `FilterChips` row showing active filters; one-click removal + "Clear all"
+- Two new read-only Tauri commands: `list_tracks_with_cues`, `list_tracks_in_any_playlist`
+- Filter state intentionally not persisted (lives in `App.tsx`; see ADR-0004 context)
+
+**Playlist duplicate surfacing:**
+- `src/lib/playlist-dedupe.ts` — `findDuplicates()` returning per-row occurrence ranks
+- `DUP` badge on rows where rank ≥ 2; duplicate count in playlist header
+- Duplicates are real `djmdSongPlaylist` entries, not a display bug (see ADR-0007)
+
+**Expanded playlist columns:**
+- 9 columns: position, health dot, title (+DUP badge), artist, genre, BPM, key, duration, year
+
+**Inspector empty state:**
+- `Details` toggle always visible on Library/Playlists views
+- Empty-state card when no track is selected
+
+**ElevenLabs UI primitives (Phase 14):**
+- `StaticWaveform` in TrackDetailPanel with cue markers overlaid; labeled "preview" (see ADR-0008)
+- `Message` + `MessageContent` + `Response` (Streamdown markdown) for chat bubbles
+- `ShimmeringText` for agent thinking state
+- `Conversation` + `ConversationScrollButton` for the message list
+- `@/*` path alias, `cn()` utility, shadcn color name aliases for drop-in component compatibility
+
+### Phase 16 — Layout & Filtering Polish (by Gemini) ✓ Shipped 2026-05-11
+
+**Layout & Workspace Flexibility:**
+- Collapsible sidebar navigation for increased horizontal workspace.
+- `ResizablePanel` implementation wrapping the right-side inspector (Track Details / Agent Chat) to allow user-controlled width scaling.
+- Enable `columnResizeMode` in the TanStack `TrackTable`.
+- Toggle visibility of the playlist browser to maximize table width when viewing a specific playlist.
+
+**Filtering & Selection Upgrades:**
+- Searchable multi-select dropdowns (`MultiSelectDropdown` via Radix UI + `cmdk`) replacing static Key and Genre pills.
+- Inline column search filters (e.g. Title, Artist, BPM inputs inside headers).
+- Removed the click-away blocking backdrop from the `FilterDrawer` so users can scroll/select tracks while adjusting filters.
+- Advanced track selection: Cmd/Ctrl+Click for single/multi-toggle, Shift+Click for ranges, and Cmd+A for "select all" — accompanied by a contextual summary action bar.
+
+### Remaining / Deferred
+
+- **Real waveform rendering**: needs Rust-side `symphonia` audio decode → peak downsample → IPC → `<Waveform data={peaks}>`. The `StaticWaveform` prop interface already accepts real data.
+- **ElevenLabs AudioPlayer**: deferred; existing `useAudioPlayer` + rodio backend already works. Revisit once `currentTime`/`duration` are exposed over IPC.
+- **Streamdown code-splitting**: bundle is ~1.1 MB (gzipped) due to bundled shiki. Split if size becomes a concern.
+- **Broken-file-path filter**: needs fs probe + cache strategy.
+- **Library-wide duplicate-candidate detection**: needs heuristic + group UI.
+- **Filter persistence**: filter state clears on restart; revisit if users ask.

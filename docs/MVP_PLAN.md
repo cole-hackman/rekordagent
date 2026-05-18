@@ -81,7 +81,7 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 
 - [x] Add diff review drawer/panel.
 - [x] Show field, old value, new value, reason, confidence, status, and controls.
-- [ ] Group changes by track/playlist beyond the current flat MVP list.
+- [x] Group changes by track/playlist (`DiffReviewPanel.tsx` groups by `target_id` with collapsible per-target sections).
 - [x] Add batch accept/reject where safe.
 - [x] Add tests for proposed/accepted/rejected UI lifecycle basics.
 
@@ -92,7 +92,7 @@ A user can install/open the macOS app, connect a Rekordbox 7 library read-only, 
 - [x] Validate accepted changes before write.
 - [x] Parse generated XML before marking exported.
 - [x] Mark exported changes as exported after success.
-- [ ] Add deeper Rust unit tests for playlist mutation export; current coverage is E2E plus XML round-trip parser tests.
+- [x] Rust unit tests for playlist mutation export (`PlaylistRename`, `PlaylistCreate`, `PlaylistAddTrack`, `PlaylistRemoveTrack`, `PlaylistDelete`) in `apps/desktop/src-tauri/src/lib.rs` tests module.
 
 ## Phase 8 — One Complete MVP Workflow
 

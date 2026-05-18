@@ -118,8 +118,8 @@ test("first-run fixture library load and track selection", async ({ page }) => {
   await page.getByRole("button", { name: "Browse…" }).click();
   await expect(page.getByText("Library connected")).toBeVisible();
   await page.getByRole("button", { name: "Open library" }).click();
-  await expect(page.getByText("2 tracks")).toBeVisible();
-  await page.getByText("Dark Matter").click();
+  await expect(page.getByText("Dark Matter").first()).toBeVisible();
+  await page.getByText("Dark Matter").first().click();
   await expect(page.getByRole("paragraph").filter({ hasText: "DJ One" })).toBeVisible();
 });
 
@@ -128,8 +128,8 @@ test("playlist view shows playlist tracks", async ({ page }) => {
   await page.getByRole("button", { name: "Get started" }).click();
   await page.getByRole("button", { name: "Browse…" }).click();
   await page.getByRole("button", { name: "Open library" }).click();
-  await page.getByRole("button", { name: "Show playlists" }).click();
-  await page.getByRole("button", { name: "Techno Set Playlist" }).click();
+  await page.getByRole("button", { name: "Playlists" }).click();
+  await page.getByRole("button", { name: /Techno Set/ }).click();
   await expect(page.getByText("Acid Rain").first()).toBeVisible();
 });
 
@@ -138,7 +138,7 @@ test("diff accept and XML export", async ({ page }) => {
   await page.getByRole("button", { name: "Get started" }).click();
   await page.getByRole("button", { name: "Browse…" }).click();
   await page.getByRole("button", { name: "Open library" }).click();
-  await page.getByRole("button", { name: "Show changes" }).click();
+  await page.getByRole("button", { name: "Changes" }).click();
   await expect(page.getByText("Deep House")).toBeVisible();
   await page.getByRole("button", { name: "Accept", exact: true }).click();
   await page.getByRole("button", { name: "Export XML" }).click();

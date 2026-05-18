@@ -1,7 +1,8 @@
 mod audio;
+mod claude_agent;
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 #[derive(serde::Serialize)]
@@ -156,6 +157,147 @@ async fn library_search(
 }
 
 #[tauri::command]
+async fn suggest_next_tracks(
+    path: String,
+    track_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<(decks_core::rekordbox_db::Track, scoring::TransitionScore)>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+
+        let Some(source_track) = db.track_by_id(&track_id).map_err(|e| e.to_string())? else {
+            return Err(format!("Source track not found: {track_id}"));
+        };
+
+        let all_tracks = db.tracks().map_err(|e| e.to_string())?;
+
+        let mut scored: Vec<_> = all_tracks
+            .into_iter()
+            .filter(|t| t.id != source_track.id)
+            .map(|t| {
+                let score = scoring::score_transition(&source_track, &t);
+                (t, score)
+            })
+            .collect();
+
+        scored.sort_by(|a, b| {
+            b.1.score
+                .partial_cmp(&a.1.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let limit = limit.unwrap_or(10);
+        scored.truncate(limit);
+
+        Ok(scored)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn library_stage_intro_cues(
+    app: tauri::AppHandle,
+    library_path: String,
+    track_ids: Vec<String>,
+) -> Result<Vec<cache::StagedChangeRecord>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let lib_dir = Path::new(&library_path)
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from(""));
+
+        let mut results = Vec::new();
+        for track_id in track_ids {
+            let Some(track) = db.track_by_id(&track_id).map_err(|e| e.to_string())? else {
+                continue;
+            };
+            let Some(analysis_path) = track.analysis_data_path else {
+                continue;
+            };
+
+            let Some(resolved) =
+                decks_core::rekordbox_db::anlz::resolve_anlz_path(&lib_dir, &analysis_path)
+            else {
+                continue;
+            };
+
+            let Ok(beat_grid) = decks_core::rekordbox_db::anlz::read_beat_grid(&resolved) else {
+                continue;
+            };
+            let Some(first_beat) = beat_grid
+                .iter()
+                .find(|b| b.beat_number == 1)
+                .or_else(|| beat_grid.first())
+            else {
+                continue;
+            };
+
+            let start_sec = first_beat.time_ms as f64 / 1000.0;
+            let bpm = first_beat.bpm();
+            if bpm <= 0.0 {
+                continue;
+            }
+            let beat_duration = 60.0 / bpm;
+            let loop_duration = beat_duration * 16.0;
+
+            let cue_mark = decks_core::rekordbox_xml::PositionMark {
+                name: None,
+                mark_type: decks_core::rekordbox_xml::PositionMarkType::Cue,
+                start: start_sec,
+                end: None,
+                num: -1,
+            };
+            let loop_mark = decks_core::rekordbox_xml::PositionMark {
+                name: None,
+                mark_type: decks_core::rekordbox_xml::PositionMarkType::Loop,
+                start: start_sec,
+                end: Some(start_sec + loop_duration),
+                num: -1,
+            };
+
+            let cue_value = serde_json::to_value(&cue_mark).map_err(|e| e.to_string())?;
+            let loop_value = serde_json::to_value(&loop_mark).map_err(|e| e.to_string())?;
+
+            let cue_change = cache
+                .stage_change(changes::NewChange {
+                    library_path: Some(library_path.clone()),
+                    kind: changes::ChangeKind::TrackAddCue,
+                    target_id: Some(track_id.clone()),
+                    field: None,
+                    old_value: None,
+                    new_value: Some(cue_value),
+                    reason: Some("Auto-generated intro cue at 1.1 downbeat".to_string()),
+                    confidence: Some(1.0),
+                })
+                .map_err(|e| e.to_string())?;
+            results.push(cue_change);
+
+            let loop_change = cache
+                .stage_change(changes::NewChange {
+                    library_path: Some(library_path.clone()),
+                    kind: changes::ChangeKind::TrackAddCue,
+                    target_id: Some(track_id.clone()),
+                    field: None,
+                    old_value: None,
+                    new_value: Some(loop_value),
+                    reason: Some("Auto-generated 4-bar intro loop".to_string()),
+                    confidence: Some(1.0),
+                })
+                .map_err(|e| e.to_string())?;
+            results.push(loop_change);
+        }
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn list_playlists(path: String) -> Result<Vec<decks_core::rekordbox_db::Playlist>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
@@ -226,6 +368,19 @@ async fn health_duplicate_scan(
 }
 
 #[tauri::command]
+async fn health_fuzzy_duplicate_scan(
+    path: String,
+) -> Result<Vec<decks_core::rekordbox_db::DuplicateGroup>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.fuzzy_duplicate_tracks().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn health_broken_link_scan(
     path: String,
 ) -> Result<decks_core::rekordbox_db::BrokenMetadataReport, String> {
@@ -250,6 +405,24 @@ async fn get_theme(app: tauri::AppHandle) -> Result<Option<String>, String> {
 async fn set_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
     let mut config = read_config(&app)?;
     config["theme"] = serde_json::json!(theme);
+    write_config(&app, &config)
+}
+
+const DEFAULT_AGENT_MODEL: &str = "claude-sonnet-4-6";
+
+#[tauri::command]
+async fn get_agent_model(app: tauri::AppHandle) -> Result<String, String> {
+    let config = read_config(&app)?;
+    Ok(config["agent_model"]
+        .as_str()
+        .map(|s| s.to_owned())
+        .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_owned()))
+}
+
+#[tauri::command]
+async fn set_agent_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
+    let mut config = read_config(&app)?;
+    config["agent_model"] = serde_json::json!(model);
     write_config(&app, &config)
 }
 
@@ -289,6 +462,17 @@ async fn delete_api_key(service: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn stream_claude_code_chat(
+    app: tauri::AppHandle,
+    event_id: String,
+    history: String,
+    message: String,
+    system: String,
+) -> Result<(), String> {
+    claude_agent::run(app, event_id, history, message, system).await
 }
 
 #[tauri::command]
@@ -534,7 +718,27 @@ async fn export_accepted_changes(
                     .map_err(|e| e.to_string())?,
             );
         }
-        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted)?;
+        let mut existing_cues: HashMap<String, Vec<decks_core::rekordbox_db::HotCue>> =
+            HashMap::new();
+        for change in &accepted {
+            if change.kind == changes::ChangeKind::TrackAddCue {
+                if let Some(target_id) = &change.target_id {
+                    if !existing_cues.contains_key(target_id) {
+                        if let Ok(cues) = db.hot_cues_for_track(target_id) {
+                            existing_cues.insert(target_id.clone(), cues);
+                        }
+                    }
+                }
+            }
+        }
+
+        let xml = generate_export_xml(
+            &tracks,
+            &playlists,
+            &playlist_entries_map,
+            &accepted,
+            Some(&existing_cues),
+        )?;
         std::fs::write(&output_path, xml).map_err(|e| e.to_string())?;
 
         let mut exported_count = 0;
@@ -558,6 +762,7 @@ pub fn generate_export_xml(
     playlists: &[decks_core::rekordbox_db::Playlist],
     playlist_entries_map: &HashMap<String, Vec<decks_core::rekordbox_db::PlaylistEntry>>,
     accepted: &[cache::StagedChangeRecord],
+    existing_cues: Option<&HashMap<String, Vec<decks_core::rekordbox_db::HotCue>>>,
 ) -> Result<String, String> {
     let mut track_id_map = HashMap::new();
     let mut xml_tracks = tracks
@@ -566,7 +771,47 @@ pub fn generate_export_xml(
         .map(|(idx, track)| {
             let xml_id = track.id.parse::<u32>().unwrap_or((idx + 1) as u32);
             track_id_map.insert(track.id.clone(), xml_id);
-            db_track_to_xml_track(track, xml_id)
+            let mut xml_track = db_track_to_xml_track(track, xml_id);
+
+            if let Some(cues_map) = existing_cues {
+                if let Some(cues) = cues_map.get(&track.id) {
+                    for cue in cues {
+                        let mark_type = match cue.kind {
+                            decks_core::rekordbox_db::CueKind::MemoryCue => {
+                                if cue.out_msec.is_some() {
+                                    decks_core::rekordbox_xml::PositionMarkType::Loop
+                                } else {
+                                    decks_core::rekordbox_xml::PositionMarkType::Cue
+                                }
+                            }
+                            decks_core::rekordbox_db::CueKind::HotCue(_) => {
+                                if cue.out_msec.is_some() {
+                                    decks_core::rekordbox_xml::PositionMarkType::Loop
+                                } else {
+                                    decks_core::rekordbox_xml::PositionMarkType::Cue
+                                }
+                            }
+                        };
+
+                        let num = match cue.kind {
+                            decks_core::rekordbox_db::CueKind::MemoryCue => -1,
+                            decks_core::rekordbox_db::CueKind::HotCue(n) => n as i32,
+                        };
+
+                        xml_track
+                            .position_marks
+                            .push(decks_core::rekordbox_xml::PositionMark {
+                                name: cue.comment.clone(),
+                                mark_type,
+                                start: (cue.in_msec.unwrap_or(0) as f64) / 1000.0,
+                                end: cue.out_msec.map(|v| (v as f64) / 1000.0),
+                                num,
+                            });
+                    }
+                }
+            }
+
+            xml_track
         })
         .collect::<Vec<_>>();
 
@@ -579,7 +824,9 @@ pub fn generate_export_xml(
     let mut playlist_order: Vec<String> = Vec::new();
     let mut deleted_playlists = std::collections::HashSet::new();
 
-    // 1. Initialize from DB
+    // 1. Initialize from DB. Track and warn about playlist entries that
+    //    reference content the live DB no longer has — see Bug C.
+    let mut dropped_initial_refs: Vec<(String, String)> = Vec::new();
     for playlist in playlists.iter().filter(|playlist| {
         matches!(
             playlist.kind,
@@ -590,26 +837,41 @@ pub fn generate_export_xml(
             .get(&playlist.id)
             .cloned()
             .unwrap_or_default();
-        let track_ids = entries
-            .iter()
-            .filter_map(|entry| track_id_map.get(&entry.content_id).copied())
-            .collect::<Vec<_>>();
+        let mut track_ids = Vec::with_capacity(entries.len());
+        for entry in &entries {
+            match track_id_map.get(&entry.content_id) {
+                Some(id) => track_ids.push(*id),
+                None => dropped_initial_refs
+                    .push((playlist.id.clone(), entry.content_id.clone())),
+            }
+        }
         playlist_tracks.insert(playlist.id.clone(), track_ids);
         playlist_names.insert(playlist.id.clone(), playlist.name.clone());
         playlist_order.push(playlist.id.clone());
     }
+    if !dropped_initial_refs.is_empty() {
+        let sample: Vec<String> = dropped_initial_refs
+            .iter()
+            .take(5)
+            .map(|(p, t)| format!("{p}->{t}"))
+            .collect();
+        tracing::warn!(
+            dropped = dropped_initial_refs.len(),
+            sample = ?sample,
+            "export: playlist entries point at tracks not in the live library; \
+             dropping them from the export",
+        );
+    }
 
-    // 2. Apply mutations
+    // 2. Apply mutations in two passes so a PlaylistCreate accepted alongside
+    //    a PlaylistAddTrack targeting it isn't dropped just because the Add
+    //    happened to come first in the accepted slice. Pass A: creates and
+    //    deletes (structural). Pass B: contents (Add/Remove/Reorder/Rename).
     for change in accepted {
         let Some(target_id) = change.target_id.as_deref() else {
             continue;
         };
         match change.kind {
-            changes::ChangeKind::PlaylistRename => {
-                if let Some(name) = change.new_value.as_ref().and_then(json_to_string) {
-                    playlist_names.insert(target_id.to_owned(), name);
-                }
-            }
             changes::ChangeKind::PlaylistDelete => {
                 deleted_playlists.insert(target_id.to_owned());
             }
@@ -620,22 +882,56 @@ pub fn generate_export_xml(
                     playlist_order.push(target_id.to_owned());
                 }
             }
+            _ => {}
+        }
+    }
+    for change in accepted {
+        let Some(target_id) = change.target_id.as_deref() else {
+            continue;
+        };
+        // Skip mutations against playlists that are being deleted in this
+        // same export — the deletion supersedes any in-flight edits.
+        if deleted_playlists.contains(target_id) {
+            continue;
+        }
+        match change.kind {
+            changes::ChangeKind::PlaylistRename => {
+                if let Some(name) = change.new_value.as_ref().and_then(json_to_string) {
+                    playlist_names.insert(target_id.to_owned(), name);
+                }
+            }
             changes::ChangeKind::PlaylistAddTrack => {
                 if let Some(track_id) = change.new_value.as_ref().and_then(json_to_string) {
-                    if let Some(xml_track_id) = track_id_map.get(&track_id) {
-                        if let Some(tracks) = playlist_tracks.get_mut(target_id) {
-                            tracks.push(*xml_track_id);
-                        }
-                    }
+                    let xml_track_id = *track_id_map.get(&track_id).ok_or_else(|| {
+                        format!(
+                            "track {track_id} referenced by change {} no longer exists in library",
+                            change.id
+                        )
+                    })?;
+                    let tracks = playlist_tracks.get_mut(target_id).ok_or_else(|| {
+                        format!(
+                            "playlist {target_id} referenced by change {} no longer exists",
+                            change.id
+                        )
+                    })?;
+                    tracks.push(xml_track_id);
                 }
             }
             changes::ChangeKind::PlaylistRemoveTrack => {
                 if let Some(track_id) = change.old_value.as_ref().and_then(json_to_string) {
-                    if let Some(xml_track_id) = track_id_map.get(&track_id) {
-                        if let Some(tracks) = playlist_tracks.get_mut(target_id) {
-                            tracks.retain(|&id| id != *xml_track_id);
-                        }
-                    }
+                    let xml_track_id = *track_id_map.get(&track_id).ok_or_else(|| {
+                        format!(
+                            "track {track_id} referenced by change {} no longer exists in library",
+                            change.id
+                        )
+                    })?;
+                    let tracks = playlist_tracks.get_mut(target_id).ok_or_else(|| {
+                        format!(
+                            "playlist {target_id} referenced by change {} no longer exists",
+                            change.id
+                        )
+                    })?;
+                    tracks.retain(|&id| id != xml_track_id);
                 }
             }
             _ => {}
@@ -807,12 +1103,266 @@ async fn get_playback_state(
     Ok(player.playback_state())
 }
 
+#[tauri::command]
+async fn get_playback_status(
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<audio::PlaybackStatus, String> {
+    Ok(player.playback_status())
+}
+
+#[tauri::command]
+async fn seek_audio(
+    time_secs: f64,
+    player: tauri::State<'_, audio::AudioPlayer>,
+) -> Result<(), String> {
+    player.send(audio::AudioCmd::Seek(std::time::Duration::from_secs_f64(
+        time_secs,
+    )))
+}
+
+// ── Tracks meta scans (used by filters) ───────────────────────────────────────
+
+#[tauri::command]
+async fn list_tracks_with_cues(path: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.track_ids_with_cues().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_tracks_in_any_playlist(path: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.track_ids_in_any_playlist().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_tracks_with_missing_files(path: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+        Ok(tracks
+            .into_iter()
+            .filter(|t| {
+                t.folder_path
+                    .as_deref()
+                    .map(|p| !Path::new(p).exists())
+                    .unwrap_or(false)
+            })
+            .map(|t| t.id)
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn library_analytics(
+    path: String,
+) -> Result<decks_core::rekordbox_db::LibraryAnalytics, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.library_analytics().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Audio analysis ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn analyze_track(
+    app: tauri::AppHandle,
+    library_path: String,
+    track_id: String,
+) -> Result<audio_analysis::AnalysisResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let track = db
+            .track_by_id(&track_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("track {track_id} not found"))?;
+        let file_path = track
+            .folder_path
+            .ok_or_else(|| "track has no folder_path".to_string())?;
+        let cache = cache_db(&app)?;
+        audio_analysis::analyze_file_cached(Path::new(&file_path), &file_path, &cache)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_audio_waveform(file_path: String, bars: Option<usize>) -> Result<Vec<f32>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = bars.unwrap_or(1200);
+        audio_analysis::extract_waveform_peaks(Path::new(&file_path), target)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── ANLZ waveform (Pioneer color/detail waveforms + beat grid) ───────────────
+
+#[derive(serde::Serialize)]
+struct AnlzWaveform {
+    preview: Vec<decks_core::rekordbox_db::PreviewPoint>,
+    detail: Vec<decks_core::rekordbox_db::DetailPoint>,
+    beat_grid: Vec<decks_core::rekordbox_db::BeatGridEntry>,
+    peaks: Option<Vec<f32>>,
+}
+
+/// Resolve a Rekordbox `AnalysisDataPath` into an on-disk path.
+/// Thin wrapper that strips the `master.db` filename to get the library root,
+/// then defers to `decks_core::rekordbox_db::anlz::resolve_anlz_path`.
+fn resolve_anlz_path(library_path: &str, analysis_path: &str) -> Option<PathBuf> {
+    let lib_dir = Path::new(library_path).parent()?;
+    decks_core::rekordbox_db::anlz::resolve_anlz_path(lib_dir, analysis_path)
+}
+
+#[tauri::command]
+async fn get_anlz_waveform(library_path: String, track_id: String) -> Result<AnlzWaveform, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let track = db
+            .track_by_id(&track_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("track {track_id} not found"))?;
+        let analysis_path = track
+            .analysis_data_path
+            .ok_or_else(|| "track has no AnalysisDataPath".to_string())?;
+
+        let dat_path = resolve_anlz_path(&library_path, &analysis_path)
+            .ok_or_else(|| format!("ANLZ file not found: {analysis_path}"))?;
+        // EXT (waveform color/detail) sits next to the DAT.
+        let ext_path = dat_path.with_extension("EXT");
+
+        let beat_grid =
+            decks_core::rekordbox_db::anlz::read_beat_grid(&dat_path).unwrap_or_default();
+        let (preview, detail) = if ext_path.exists() {
+            (
+                decks_core::rekordbox_db::anlz::read_preview_waveform(&ext_path)
+                    .unwrap_or_default(),
+                decks_core::rekordbox_db::anlz::read_detail_waveform(&ext_path).unwrap_or_default(),
+            )
+        } else {
+            // Some libraries store waveform data in the DAT itself.
+            (
+                decks_core::rekordbox_db::anlz::read_preview_waveform(&dat_path)
+                    .unwrap_or_default(),
+                decks_core::rekordbox_db::anlz::read_detail_waveform(&dat_path).unwrap_or_default(),
+            )
+        };
+
+        Ok(AnlzWaveform {
+            preview,
+            detail,
+            beat_grid,
+            peaks: None,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Audio tags ────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn read_audio_tags(file_path: String) -> Result<audio_tags::TrackTags, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        audio_tags::read_tags(Path::new(&file_path)).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn write_audio_tags(
+    file_path: String,
+    fields: audio_tags::TagWriteFields,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        audio_tags::write_tag_fields(Path::new(&file_path), &fields).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Relocate ──────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn relocate_scan(
+    library_path: String,
+    search_roots: Vec<String>,
+) -> Result<Vec<relocate::RelocateCandidate>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let orphans: Vec<_> = db
+            .tracks()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter(|t| {
+                t.folder_path
+                    .as_deref()
+                    .map(|p| !Path::new(p).exists())
+                    .unwrap_or(false)
+            })
+            .collect();
+        if orphans.is_empty() {
+            return Ok(Vec::new());
+        }
+        let relocator =
+            relocate::Relocator::new(&search_roots).map_err(|e| format!("relocator init: {e}"))?;
+        let mut out = Vec::new();
+        for track in orphans {
+            let Some(orig) = track.folder_path else {
+                continue;
+            };
+            let info = relocate::TrackInfo {
+                id: track.id,
+                original_path: orig,
+                duration_secs: track.duration_secs,
+                title: track.title,
+                artist: track.artist,
+            };
+            let candidate = relocator.scan_track(&info);
+            if !candidate.matches.is_empty() {
+                out.push(candidate);
+            }
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(audio::AudioPlayer::new())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            app.manage(audio::AudioPlayer::new(Some(handle)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             validate_library_path,
             list_tracks,
@@ -821,17 +1371,33 @@ pub fn run() {
             get_library_path,
             set_library_path,
             library_search,
+            suggest_next_tracks,
+            library_stage_intro_cues,
             list_playlists,
             get_playlist,
             health_orphan_scan,
             health_duplicate_scan,
+            health_fuzzy_duplicate_scan,
             health_broken_link_scan,
+            list_tracks_with_cues,
+            list_tracks_in_any_playlist,
+            list_tracks_with_missing_files,
+            library_analytics,
+            analyze_track,
+            get_audio_waveform,
+            get_anlz_waveform,
+            read_audio_tags,
+            write_audio_tags,
+            relocate_scan,
             get_theme,
             set_theme,
+            get_agent_model,
+            set_agent_model,
             get_api_key,
             set_api_key,
             delete_api_key,
             get_claude_code_status,
+            stream_claude_code_chat,
             list_conversations,
             create_conversation,
             load_conversation,
@@ -850,6 +1416,8 @@ pub fn run() {
             resume_audio,
             stop_audio,
             get_playback_state,
+            get_playback_status,
+            seek_audio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running decks");
@@ -982,7 +1550,7 @@ mod tests {
             },
         ];
 
-        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted)
+        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None)
             .expect("should generate xml");
 
         let parsed = decks_core::rekordbox_xml::parse(&xml).expect("should parse back");
@@ -1006,5 +1574,331 @@ mod tests {
         // Track IDs are assigned sequentially if they aren't numbers. track1 -> 1, track2 -> 2.
         assert_eq!(pl_tracks[0], vec![1, 2]);
         assert_eq!(pl_tracks[1], vec![1]);
+    }
+
+    fn make_track(id: &str, title: &str) -> Track {
+        Track {
+            id: id.into(),
+            title: title.into(),
+            artist: None,
+            album: None,
+            genre: None,
+            duration_secs: None,
+            release_year: None,
+            bpm: None,
+            bit_rate: None,
+            sample_rate: None,
+            comment: None,
+            dj_play_count: None,
+            rating: None,
+            musical_key: None,
+            folder_path: None,
+            analysis_data_path: None,
+            file_type: None,
+        }
+    }
+
+    #[test]
+    fn test_generate_export_xml_playlist_remove_track() {
+        let tracks = vec![
+            make_track("track1", "Track One"),
+            make_track("track2", "Track Two"),
+        ];
+        let playlists = vec![Playlist {
+            id: "pl1".into(),
+            name: "Set".into(),
+            kind: PlaylistKind::Playlist,
+            parent_id: Some("root".into()),
+            seq: Some(1),
+        }];
+        let mut playlist_entries_map = HashMap::new();
+        playlist_entries_map.insert(
+            "pl1".into(),
+            vec![
+                PlaylistEntry {
+                    playlist_id: "pl1".into(),
+                    content_id: "track1".into(),
+                    track_no: Some(1),
+                },
+                PlaylistEntry {
+                    playlist_id: "pl1".into(),
+                    content_id: "track2".into(),
+                    track_no: Some(2),
+                },
+            ],
+        );
+
+        let accepted = vec![cache::StagedChangeRecord {
+            id: "c1".into(),
+            library_path: None,
+            kind: ChangeKind::PlaylistRemoveTrack,
+            target_id: Some("pl1".into()),
+            field: None,
+            old_value: Some(json!("track1")),
+            new_value: None,
+            reason: None,
+            confidence: None,
+            status: ChangeStatus::Accepted,
+            created_at: 0,
+            updated_at: 0,
+        }];
+
+        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None)
+            .expect("xml");
+        let parsed = decks_core::rekordbox_xml::parse(&xml).expect("parse");
+        let root = &parsed.playlists[0];
+
+        let mut pl_tracks = Vec::new();
+        if let decks_core::rekordbox_xml::Node::Folder { children, .. } = root {
+            for child in children {
+                if let decks_core::rekordbox_xml::Node::Playlist { track_ids, .. } = child {
+                    pl_tracks.push(track_ids.clone());
+                }
+            }
+        }
+        // track1 removed; only track2 (XML id 2) remains.
+        assert_eq!(pl_tracks, vec![vec![2]]);
+    }
+
+    #[test]
+    fn test_generate_export_xml_playlist_delete() {
+        let tracks = vec![make_track("track1", "Track One")];
+        let playlists = vec![
+            Playlist {
+                id: "pl1".into(),
+                name: "Keeper".into(),
+                kind: PlaylistKind::Playlist,
+                parent_id: Some("root".into()),
+                seq: Some(1),
+            },
+            Playlist {
+                id: "pl2".into(),
+                name: "Trash Me".into(),
+                kind: PlaylistKind::Playlist,
+                parent_id: Some("root".into()),
+                seq: Some(2),
+            },
+        ];
+        let mut playlist_entries_map = HashMap::new();
+        playlist_entries_map.insert(
+            "pl1".into(),
+            vec![PlaylistEntry {
+                playlist_id: "pl1".into(),
+                content_id: "track1".into(),
+                track_no: Some(1),
+            }],
+        );
+        playlist_entries_map.insert("pl2".into(), vec![]);
+
+        let accepted = vec![cache::StagedChangeRecord {
+            id: "c1".into(),
+            library_path: None,
+            kind: ChangeKind::PlaylistDelete,
+            target_id: Some("pl2".into()),
+            field: None,
+            old_value: None,
+            new_value: None,
+            reason: None,
+            confidence: None,
+            status: ChangeStatus::Accepted,
+            created_at: 0,
+            updated_at: 0,
+        }];
+
+        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None)
+            .expect("xml");
+        let parsed = decks_core::rekordbox_xml::parse(&xml).expect("parse");
+        let root = &parsed.playlists[0];
+
+        let mut pl_names = Vec::new();
+        if let decks_core::rekordbox_xml::Node::Folder { children, .. } = root {
+            for child in children {
+                if let decks_core::rekordbox_xml::Node::Playlist { name, .. } = child {
+                    pl_names.push(name.clone());
+                }
+            }
+        }
+        // pl2 dropped from export.
+        assert_eq!(pl_names, vec!["Keeper"]);
+    }
+
+    #[test]
+    fn export_fails_when_playlist_add_target_missing() {
+        // No playlists in DB; staged PlaylistAddTrack targets a phantom playlist.
+        let tracks = vec![make_track("track1", "Track One")];
+        let playlists: Vec<Playlist> = vec![];
+        let playlist_entries_map = HashMap::new();
+        let accepted = vec![cache::StagedChangeRecord {
+            id: "c1".into(),
+            library_path: None,
+            kind: ChangeKind::PlaylistAddTrack,
+            target_id: Some("pl-ghost".into()),
+            field: None,
+            old_value: None,
+            new_value: Some(json!("track1")),
+            reason: None,
+            confidence: None,
+            status: ChangeStatus::Accepted,
+            created_at: 0,
+            updated_at: 0,
+        }];
+
+        let result =
+            generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None);
+        let err = result.expect_err("must fail loudly, not silently drop");
+        assert!(
+            err.contains("pl-ghost") && err.contains("no longer exists"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn export_fails_when_playlist_add_track_missing() {
+        // Playlist exists, but the track referenced by the Add isn't in the live library.
+        let tracks = vec![make_track("track1", "Track One")];
+        let playlists = vec![Playlist {
+            id: "pl1".into(),
+            name: "Set".into(),
+            kind: PlaylistKind::Playlist,
+            parent_id: Some("root".into()),
+            seq: Some(1),
+        }];
+        let mut playlist_entries_map = HashMap::new();
+        playlist_entries_map.insert("pl1".into(), vec![]);
+        let accepted = vec![cache::StagedChangeRecord {
+            id: "c1".into(),
+            library_path: None,
+            kind: ChangeKind::PlaylistAddTrack,
+            target_id: Some("pl1".into()),
+            field: None,
+            old_value: None,
+            new_value: Some(json!("track-ghost")),
+            reason: None,
+            confidence: None,
+            status: ChangeStatus::Accepted,
+            created_at: 0,
+            updated_at: 0,
+        }];
+
+        let result =
+            generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None);
+        let err = result.expect_err("must fail loudly when track is missing");
+        assert!(
+            err.contains("track-ghost") && err.contains("no longer exists"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn export_add_track_works_when_playlist_create_comes_after_add_in_slice() {
+        // Bug B's other half: the user accepts a PlaylistCreate AND a
+        // PlaylistAddTrack, but the Add appears first in the slice.
+        // Without the two-pass fix, the Add silently drops because the
+        // playlist hasn't been initialized yet when the Add runs.
+        let tracks = vec![make_track("track1", "Track One")];
+        let playlists: Vec<Playlist> = vec![]; // playlist comes only from the Create change
+        let playlist_entries_map = HashMap::new();
+        let accepted = vec![
+            cache::StagedChangeRecord {
+                id: "c-add".into(),
+                library_path: None,
+                kind: ChangeKind::PlaylistAddTrack,
+                target_id: Some("pl-new".into()),
+                field: None,
+                old_value: None,
+                new_value: Some(json!("track1")),
+                reason: None,
+                confidence: None,
+                status: ChangeStatus::Accepted,
+                created_at: 0,
+                updated_at: 0,
+            },
+            cache::StagedChangeRecord {
+                id: "c-create".into(),
+                library_path: None,
+                kind: ChangeKind::PlaylistCreate,
+                target_id: Some("pl-new".into()),
+                field: None,
+                old_value: None,
+                new_value: Some(json!("Fresh Set")),
+                reason: None,
+                confidence: None,
+                status: ChangeStatus::Accepted,
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+
+        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None)
+            .expect("xml");
+        let parsed = decks_core::rekordbox_xml::parse(&xml).expect("parse");
+        let root = &parsed.playlists[0];
+        let mut found = false;
+        if let decks_core::rekordbox_xml::Node::Folder { children, .. } = root {
+            for child in children {
+                if let decks_core::rekordbox_xml::Node::Playlist {
+                    name, track_ids, ..
+                } = child
+                {
+                    if name == "Fresh Set" {
+                        assert_eq!(*track_ids, vec![1]);
+                        found = true;
+                    }
+                }
+            }
+        }
+        assert!(found, "newly-created playlist with its added track must appear");
+    }
+
+    #[test]
+    fn export_does_not_fail_when_add_targets_a_playlist_being_deleted() {
+        // If the user simultaneously stages PlaylistDelete and PlaylistAddTrack
+        // for the same playlist, the deletion should win and we shouldn't error
+        // on the Add.
+        let tracks = vec![make_track("track1", "Track One")];
+        let playlists = vec![Playlist {
+            id: "pl1".into(),
+            name: "Doomed".into(),
+            kind: PlaylistKind::Playlist,
+            parent_id: Some("root".into()),
+            seq: Some(1),
+        }];
+        let mut playlist_entries_map = HashMap::new();
+        playlist_entries_map.insert("pl1".into(), vec![]);
+        let accepted = vec![
+            cache::StagedChangeRecord {
+                id: "c-add".into(),
+                library_path: None,
+                kind: ChangeKind::PlaylistAddTrack,
+                target_id: Some("pl1".into()),
+                field: None,
+                old_value: None,
+                new_value: Some(json!("track1")),
+                reason: None,
+                confidence: None,
+                status: ChangeStatus::Accepted,
+                created_at: 0,
+                updated_at: 0,
+            },
+            cache::StagedChangeRecord {
+                id: "c-del".into(),
+                library_path: None,
+                kind: ChangeKind::PlaylistDelete,
+                target_id: Some("pl1".into()),
+                field: None,
+                old_value: None,
+                new_value: None,
+                reason: None,
+                confidence: None,
+                status: ChangeStatus::Accepted,
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+
+        let xml = generate_export_xml(&tracks, &playlists, &playlist_entries_map, &accepted, None)
+            .expect("delete supersedes the add");
+        // pl1 should be absent from the export.
+        assert!(!xml.contains("Doomed"));
     }
 }

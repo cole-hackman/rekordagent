@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -25,6 +26,10 @@ keyring = "2"
 decks-core = { path = "../../../crates/decks-core" }
 cache = { path = "../../../crates/cache" }
 changes = { path = "../../../crates/changes" }
+audio-tags = { path = "../../../crates/audio-tags" }
+audio-analysis = { path = "../../../crates/audio-analysis" }
+relocate = { version = "0.1.0", path = "../../../crates/relocate" }
+scoring = { path = "../../../crates/scoring" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
