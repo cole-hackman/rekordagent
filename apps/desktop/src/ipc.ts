@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Track, HotCue, Playlist } from "./types";
+import type { Track, HotCue, Playlist, PlaylistEntry, DuplicateGroup, BrokenTrack } from "./types";
 
 export async function pickLibraryPath(): Promise<string | null> {
   const result = await open({
@@ -111,7 +111,29 @@ export async function listPlaylists(path: string): Promise<Playlist[]> {
   return invoke<Playlist[]>("list_playlists", { path });
 }
 
+export async function listPlaylistEntries(
+  path: string,
+  playlistId: string,
+): Promise<PlaylistEntry[]> {
+  return invoke<PlaylistEntry[]>("list_playlist_entries", { path, playlistId });
+}
+
+export async function getTrackById(
+  path: string,
+  trackId: string,
+): Promise<Track | null> {
+  return invoke<Track | null>("get_track_by_id", { path, trackId });
+}
+
 export async function healthOrphanScan(path: string): Promise<Track[]> {
   return invoke<Track[]>("health_orphan_scan", { path });
+}
+
+export async function healthDuplicateScan(path: string): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("health_duplicate_scan", { path });
+}
+
+export async function healthBrokenLinkScan(path: string): Promise<BrokenTrack[]> {
+  return invoke<BrokenTrack[]>("health_broken_link_scan", { path });
 }
 

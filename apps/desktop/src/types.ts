@@ -18,11 +18,27 @@ export interface HotCue {
 
 /** Mirrors `rekordbox_db::types::Playlist`. */
 export interface Playlist {
-  id: number;
+  id: string;
   name: string;
   kind: "Playlist" | "Folder" | "SmartPlaylist";
   parent_id: string | null;
   seq: number | null;
+}
+
+/** Mirrors `rekordbox_db::types::PlaylistEntry`. */
+export interface PlaylistEntry {
+  playlist_id: string;
+  content_id: string;
+  track_no: number | null;
+}
+
+/** A group of likely-duplicate tracks. */
+export type DuplicateGroup = Track[];
+
+/** A track with its metadata problems. */
+export interface BrokenTrack {
+  track: Track;
+  problems: string[];
 }
 
 /** Mirrors `rekordbox_db::types::Track` (serde snake_case). */

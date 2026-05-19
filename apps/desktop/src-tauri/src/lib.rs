@@ -113,6 +113,109 @@ async fn list_playlists(path: String) -> Result<Vec<decks_core::rekordbox_db::Pl
 }
 
 #[tauri::command]
+async fn list_playlist_entries(
+    path: String,
+    playlist_id: String,
+) -> Result<Vec<decks_core::rekordbox_db::PlaylistEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.playlist_entries(&playlist_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_track_by_id(
+    path: String,
+    track_id: String,
+) -> Result<Option<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.track_by_id(&track_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Find tracks that are likely duplicates (same normalized title + artist).
+#[tauri::command]
+async fn health_duplicate_scan(
+    path: String,
+) -> Result<Vec<Vec<decks_core::rekordbox_db::Track>>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+
+        // Group by (normalized_title, normalized_artist).
+        use std::collections::HashMap;
+        let mut groups: HashMap<(String, String), Vec<decks_core::rekordbox_db::Track>> =
+            HashMap::new();
+        for t in tracks {
+            let key = (
+                t.title.to_lowercase().trim().to_string(),
+                t.artist
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .trim()
+                    .to_string(),
+            );
+            groups.entry(key).or_default().push(t);
+        }
+        Ok(groups
+            .into_values()
+            .filter(|g| g.len() > 1)
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Find tracks with missing or suspicious metadata (no BPM, no key, no artist,
+/// BPM outside the 40–220 range).
+#[tauri::command]
+async fn health_broken_link_scan(
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+        let issues = tracks
+            .into_iter()
+            .filter_map(|t| {
+                let mut problems: Vec<&str> = vec![];
+                if t.bpm.is_none() {
+                    problems.push("missing_bpm");
+                } else if t.bpm.map(|b| b < 40.0 || b > 220.0).unwrap_or(false) {
+                    problems.push("bpm_out_of_range");
+                }
+                if t.musical_key.is_none() {
+                    problems.push("missing_key");
+                }
+                if t.artist.is_none() {
+                    problems.push("missing_artist");
+                }
+                if problems.is_empty() {
+                    return None;
+                }
+                Some(serde_json::json!({
+                    "track": t,
+                    "problems": problems,
+                }))
+            })
+            .collect();
+        Ok(issues)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn health_orphan_scan(path: String) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
@@ -273,6 +376,10 @@ pub fn run() {
             resume_audio,
             stop_audio,
             get_playback_state,
+            list_playlist_entries,
+            get_track_by_id,
+            health_duplicate_scan,
+            health_broken_link_scan,
             claude_available,
             chat_with_claude,
         ])

@@ -1,4 +1,4 @@
-import type { Track, Playlist } from "../types";
+import type { Track, Playlist, PlaylistEntry, HotCue, DuplicateGroup, BrokenTrack } from "../types";
 
 // ── Conversation message types ────────────────────────────────────────────────
 
@@ -48,9 +48,26 @@ export interface SearchResult {
   query: string;
 }
 
+export interface GetTrackResult {
+  tool: "library.get_track";
+  track: Track | null;
+}
+
 export interface PlaylistsResult {
   tool: "library.list_playlists";
   playlists: Playlist[];
+}
+
+export interface PlaylistEntriesResult {
+  tool: "library.list_playlist_entries";
+  playlist_id: string;
+  entries: PlaylistEntry[];
+}
+
+export interface ListCuesResult {
+  tool: "library.list_cues";
+  track_id: string;
+  cues: HotCue[];
 }
 
 export interface OrphanResult {
@@ -58,4 +75,22 @@ export interface OrphanResult {
   orphans: Track[];
 }
 
-export type ToolPayload = SearchResult | PlaylistsResult | OrphanResult;
+export interface DuplicateResult {
+  tool: "health.duplicate_scan";
+  groups: DuplicateGroup[];
+}
+
+export interface BrokenLinkResult {
+  tool: "health.broken_link_scan";
+  issues: BrokenTrack[];
+}
+
+export type ToolPayload =
+  | SearchResult
+  | GetTrackResult
+  | PlaylistsResult
+  | PlaylistEntriesResult
+  | ListCuesResult
+  | OrphanResult
+  | DuplicateResult
+  | BrokenLinkResult;
