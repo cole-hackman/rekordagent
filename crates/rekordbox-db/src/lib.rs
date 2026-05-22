@@ -17,10 +17,12 @@ pub mod anlz;
 mod connection;
 mod queries;
 pub mod types;
+pub mod write;
 
 pub use anlz::{DetailPoint, PreviewPoint, WaveformColor};
 pub use connection::RekordboxDb;
+pub use write::{WriteError, WriteGuard, WriteSession};
 pub use types::{
-    BeatGridEntry, BrokenMetadataReport, CueKind, DuplicateGroup, HotCue, LibraryAnalytics,
+    ArtistCount, BeatGridEntry, BrokenMetadataReport, CueKind, DuplicateGroup, GenreCount, HotCue, LibraryAnalytics,
     Playlist, PlaylistEntry, PlaylistKind, Track,
 };

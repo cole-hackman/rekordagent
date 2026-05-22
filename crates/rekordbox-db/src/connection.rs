@@ -10,7 +10,7 @@ use std::path::Path;
 /// Shared passphrase for every Rekordbox 6/7 database.
 /// Derived by reverse-engineering the Rekordbox application; publicly documented
 /// in pyrekordbox and reklawdbox.
-const RB_SQLCIPHER_KEY: &str = "402fd482c38817c35ffa8ffb8c7d93143b749e7d315df7a81732a1ff43608497";
+pub(crate) const RB_SQLCIPHER_KEY: &str = "402fd482c38817c35ffa8ffb8c7d93143b749e7d315df7a81732a1ff43608497";
 
 /// Read-only handle to a Rekordbox `master.db`.
 pub struct RekordboxDb {
@@ -42,6 +42,30 @@ impl RekordboxDb {
 
     pub fn search_tracks(&self, query: &str) -> Result<Vec<Track>> {
         queries::tracks::search(&self.conn, query)
+    }
+
+    pub fn list_genres(&self) -> Result<Vec<crate::types::GenreCount>> {
+        queries::tracks::list_genres(&self.conn)
+    }
+
+    pub fn list_artists(&self) -> Result<Vec<crate::types::ArtistCount>> {
+        queries::tracks::list_artists(&self.conn)
+    }
+
+    pub fn tracks_by_genre(&self, genre: &str) -> Result<Vec<Track>> {
+        queries::tracks::by_genre(&self.conn, genre)
+    }
+
+    pub fn tracks_by_artist(&self, artist: &str) -> Result<Vec<Track>> {
+        queries::tracks::by_artist(&self.conn, artist)
+    }
+
+    pub fn tracks_added_since(&self, watermark_iso: &str) -> Result<Vec<Track>> {
+        queries::tracks::added_since(&self.conn, watermark_iso)
+    }
+
+    pub fn tracks_by_ids(&self, ids: &[String]) -> Result<Vec<Track>> {
+        queries::tracks::by_ids(&self.conn, ids)
     }
 
     // ── Playlists ────────────────────────────────────────────────────────────
@@ -110,7 +134,7 @@ impl RekordboxDb {
     }
 }
 
-fn apply_pragmas(conn: &Connection) -> Result<()> {
+pub(crate) fn apply_pragmas(conn: &Connection) -> Result<()> {
     conn.execute_batch(&format!(
         "PRAGMA key = '{RB_SQLCIPHER_KEY}'; PRAGMA busy_timeout = 5000;"
     ))

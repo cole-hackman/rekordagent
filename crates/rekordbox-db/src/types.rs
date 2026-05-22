@@ -138,3 +138,15 @@ pub struct LibraryAnalytics {
     /// Musical Key -> Count
     pub key_distribution: std::collections::HashMap<String, usize>,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GenreCount {
+    pub genre: String,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtistCount {
+    pub artist: String,
+    pub count: u32,
+}

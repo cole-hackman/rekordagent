@@ -8,5 +8,5 @@ pub mod store;
 
 pub use store::{
     CacheDb, Conversation, ConversationMessage, ConversationWithMessages, NewStagedChange,
-    StagedChangeRecord,
+    StagedChangeRecord, Tag, TagCategory,
 };

@@ -2,6 +2,8 @@
 //!
 //! Vendored and adapted from reklawdbox `src/changes.rs` (MIT, Ryan Voitiskis).
 
+pub mod applier;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,6 +19,7 @@ pub enum ChangeStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChangeKind {
     TrackMetadataEdit,
+    TrackDelete,
     CueMetadataEdit,
     TrackAddCue,
     PlaylistCreate,

@@ -75,6 +75,63 @@ pub const MIGRATIONS: &[(u32, &str)] = &[
         );
         ",
     ),
+    (
+        5,
+        "
+        -- Custom Tags (Feature 1)
+        CREATE TABLE tag_categories (
+          id   TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          seq  INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE tags (
+          id          TEXT PRIMARY KEY,
+          category_id TEXT NOT NULL REFERENCES tag_categories(id) ON DELETE CASCADE,
+          name        TEXT NOT NULL,
+          seq         INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE track_tags (
+          library_path TEXT NOT NULL,
+          track_id     TEXT NOT NULL,
+          tag_id       TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (library_path, track_id, tag_id)
+        );
+        CREATE INDEX idx_track_tags_tag ON track_tags(tag_id);
+
+        -- Incoming / Archive (Feature 5)
+        CREATE TABLE incoming_watermark (
+          library_path TEXT PRIMARY KEY,
+          cleared_at   INTEGER NOT NULL
+        );
+        CREATE TABLE archived_tracks (
+          library_path TEXT NOT NULL,
+          track_id     TEXT NOT NULL,
+          archived_at  INTEGER NOT NULL,
+          PRIMARY KEY (library_path, track_id)
+        );
+
+        -- Smart Fixes / Sync config (Features 3 & 4)
+        CREATE TABLE common_text_blocklist (
+          id      INTEGER PRIMARY KEY AUTOINCREMENT,
+          pattern TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE field_mappings (
+          library_path TEXT NOT NULL,
+          source_field TEXT NOT NULL,
+          target_column TEXT NOT NULL,
+          PRIMARY KEY (library_path, source_field)
+        );
+        CREATE TABLE sync_runs (
+          id           TEXT PRIMARY KEY,
+          library_path TEXT NOT NULL,
+          mode         TEXT NOT NULL,
+          tracks_written INTEGER NOT NULL,
+          errors_json  TEXT,
+          backup_path  TEXT,
+          ran_at       INTEGER NOT NULL
+        );
+        ",
+    ),
 ];
 
 pub fn current_version(conn: &rusqlite::Connection) -> anyhow::Result<u32> {
