@@ -1,0 +1,10 @@
+[package]
+name = "track-matcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fuzzy-match external track lists against the local library"
+
+[dependencies]
+serde = { workspace = true }
+regex = "1"

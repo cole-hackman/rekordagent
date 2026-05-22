@@ -20,6 +20,8 @@ members = [
     "crates/agent-tools",
     "apps/cli",
     "apps/desktop/src-tauri", "crates/relocate",
+    "crates/smart-fixes",
+    "crates/track-matcher",
 ]
 
 [workspace.package]
