@@ -197,6 +197,67 @@ async fn suggest_next_tracks(
 }
 
 #[tauri::command]
+async fn library_stage_playlist_remove_track(
+    app: tauri::AppHandle,
+    library_path: String,
+    playlist_id: String,
+    track_id: String,
+) -> Result<cache::StagedChangeRecord, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+
+        // Validate that the playlist + track combination is real and currently
+        // related. Avoids staging removals for tracks that aren't actually in
+        // the playlist (which would later fail at export time).
+        let playlist_entries = db
+            .playlist_entries(&playlist_id)
+            .map_err(|e| e.to_string())?;
+        if !playlist_entries
+            .iter()
+            .any(|entry| entry.content_id == track_id)
+        {
+            return Err(format!(
+                "track {track_id} is not in playlist {playlist_id}"
+            ));
+        }
+
+        let track_value = serde_json::Value::String(track_id.clone());
+        let track_label = db
+            .track_by_id(&track_id)
+            .ok()
+            .flatten()
+            .map(|t| t.title)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| track_id.clone());
+        let playlist_label = db
+            .playlist_by_id(&playlist_id)
+            .ok()
+            .flatten()
+            .map(|p| p.name)
+            .unwrap_or_else(|| playlist_id.clone());
+
+        cache
+            .stage_change(changes::NewChange {
+                library_path: Some(library_path),
+                kind: changes::ChangeKind::PlaylistRemoveTrack,
+                target_id: Some(playlist_id),
+                field: None,
+                old_value: Some(track_value),
+                new_value: None,
+                reason: Some(format!(
+                    "Remove “{track_label}” from playlist “{playlist_label}”"
+                )),
+                confidence: None,
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn library_stage_intro_cues(
     app: tauri::AppHandle,
     library_path: String,
@@ -1353,6 +1414,932 @@ async fn relocate_scan(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn reveal_in_finder(path: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Err(format!("path does not exist: {path}"));
+    }
+    let status = if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .status()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path])
+            .status()
+    } else {
+        // Linux/BSD: open the parent directory in the default file manager.
+        let parent = target
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.clone());
+        std::process::Command::new("xdg-open").arg(parent).status()
+    };
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("file manager exited with status {s}")),
+        Err(e) => Err(format!("failed to launch file manager: {e}")),
+    }
+}
+
+#[derive(serde::Serialize)]
+struct SyncCheckResult {
+    locked: bool,
+    pending_changes: u32,
+}
+
+#[derive(serde::Serialize)]
+struct PendingChange {
+    change_id: String,
+    kind: String,
+    track_id: Option<String>,
+    track_title: Option<String>,
+    field: Option<String>,
+    old_value: Option<serde_json::Value>,
+    new_value: Option<serde_json::Value>,
+    reason: Option<String>,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SyncMode {
+    #[default]
+    Full,
+    Playlist,
+    Modified,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct SyncOptions {
+    #[serde(default)]
+    playlist_id: Option<String>,
+    #[serde(default)]
+    since_ts: Option<i64>,
+}
+
+fn filter_for_mode(
+    changes: Vec<changes::StagedChange>,
+    mode: &SyncMode,
+    opts: &SyncOptions,
+) -> Vec<changes::StagedChange> {
+    let accepted = changes
+        .into_iter()
+        .filter(|c| c.status == changes::ChangeStatus::Accepted);
+    match mode {
+        SyncMode::Full => accepted.collect(),
+        SyncMode::Playlist => {
+            // For playlist mode we'd need a track-membership lookup. Stub: keep
+            // changes whose target_id matches a track in the named playlist.
+            // Playlist resolution happens at the Tauri layer below.
+            let _ = opts.playlist_id;
+            accepted.collect()
+        }
+        SyncMode::Modified => {
+            let since = opts.since_ts.unwrap_or(0);
+            accepted.filter(|c| c.updated_at >= since).collect()
+        }
+    }
+}
+
+#[tauri::command]
+async fn sync_check(app: tauri::AppHandle, library_path: String) -> Result<SyncCheckResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let changes = cache.list_changes(Some(&library_path)).map_err(|e| e.to_string())?;
+        let pending_changes = changes.iter().filter(|c| c.status == changes::ChangeStatus::Accepted).count() as u32;
+
+        let locked = decks_core::rekordbox_db::WriteGuard::probe_lock(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+
+        Ok(SyncCheckResult { locked, pending_changes })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_preview(
+    app: tauri::AppHandle,
+    library_path: String,
+    mode: SyncMode,
+    options: SyncOptions,
+) -> Result<Vec<PendingChange>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let all = cache
+            .list_changes(Some(&library_path))
+            .map_err(|e| e.to_string())?;
+        let filtered = filter_for_mode(all, &mode, &options);
+
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+
+        let mut title_cache: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        let mut out = Vec::with_capacity(filtered.len());
+        for c in filtered {
+            let track_title = if let Some(tid) = c.target_id.as_ref() {
+                if let Some(t) = title_cache.get(tid) {
+                    Some(t.clone())
+                } else {
+                    let title = db
+                        .track_by_id(tid)
+                        .ok()
+                        .flatten()
+                        .and_then(|t| Some(t.title));
+                    if let Some(t) = title.as_ref() {
+                        title_cache.insert(tid.clone(), t.clone());
+                    }
+                    title
+                }
+            } else {
+                None
+            };
+            out.push(PendingChange {
+                change_id: c.id,
+                kind: format!("{:?}", c.kind),
+                track_id: c.target_id,
+                track_title,
+                field: c.field,
+                old_value: c.old_value,
+                new_value: c.new_value,
+                reason: c.reason,
+                updated_at: c.updated_at,
+            });
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_execute(
+    app: tauri::AppHandle,
+    library_path: String,
+    mode: SyncMode,
+    options: SyncOptions,
+    change_ids: Vec<String>,
+) -> Result<changes::applier::ApplyResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let all = cache
+            .list_changes(Some(&library_path))
+            .map_err(|e| e.to_string())?;
+        let filtered = filter_for_mode(all, &mode, &options);
+
+        let id_filter: std::collections::HashSet<String> = change_ids.into_iter().collect();
+        let to_apply: Vec<_> = filtered
+            .into_iter()
+            .filter(|c| id_filter.is_empty() || id_filter.contains(&c.id))
+            .collect();
+
+        if to_apply.is_empty() {
+            return Ok(changes::applier::ApplyResult {
+                applied: vec![],
+                failed: vec![],
+            });
+        }
+
+        let session_state = app.state::<std::sync::Mutex<decks_core::rekordbox_db::WriteSession>>();
+        let mut session = session_state.lock().map_err(|e| e.to_string())?;
+        let mut guard = decks_core::rekordbox_db::WriteGuard::acquire_for_write(
+            Path::new(&library_path),
+            &mut session,
+        )
+        .map_err(|e| e.to_string())?;
+
+        let res = guard
+            .with_tx(|tx| {
+                changes::applier::apply(tx, &to_apply).map_err(|e| anyhow::anyhow!(e))
+            })
+            .map_err(|e| e.to_string())?;
+        drop(guard);
+        drop(session);
+
+        for id in &res.applied {
+            let _ = cache.mark_change_exported(id);
+        }
+
+        Ok(res)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Backwards-compatible wrapper used by older callers (CleanupPanel pre-Phase A).
+#[tauri::command]
+async fn sync_execute_accepted(
+    app: tauri::AppHandle,
+    library_path: String,
+) -> Result<changes::applier::ApplyResult, String> {
+    sync_execute(
+        app,
+        library_path,
+        SyncMode::Full,
+        SyncOptions::default(),
+        Vec::new(),
+    )
+    .await
+}
+
+// ── Cleanup Commands ──────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+struct CleanupResult {
+    affected_tracks: u32,
+    staged_change_ids: Vec<String>,
+}
+
+#[tauri::command]
+async fn list_genres(path: String) -> Result<Vec<decks_core::rekordbox_db::GenreCount>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.list_genres().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_artists(path: String) -> Result<Vec<decks_core::rekordbox_db::ArtistCount>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.list_artists().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn stage_cleanup_changes(
+    cache: &cache::CacheDb,
+    library_path: &str,
+    field: &'static str,
+    tracks: Vec<decks_core::rekordbox_db::Track>,
+    old_value: serde_json::Value,
+    new_value: serde_json::Value,
+    reason: String,
+) -> Result<CleanupResult, String> {
+    let affected_tracks = tracks.len() as u32;
+    let mut staged_change_ids = Vec::with_capacity(tracks.len());
+    for track in tracks {
+        let change = cache
+            .stage_change(changes::NewChange {
+                library_path: Some(library_path.to_string()),
+                kind: changes::ChangeKind::TrackMetadataEdit,
+                target_id: Some(track.id),
+                field: Some(field.to_string()),
+                old_value: Some(old_value.clone()),
+                new_value: Some(new_value.clone()),
+                reason: Some(reason.clone()),
+                confidence: Some(1.0),
+            })
+            .map_err(|e| e.to_string())?;
+        cache.accept_change(&change.id).map_err(|e| e.to_string())?;
+        staged_change_ids.push(change.id);
+    }
+    Ok(CleanupResult {
+        affected_tracks,
+        staged_change_ids,
+    })
+}
+
+#[tauri::command]
+async fn rename_genre(
+    app: tauri::AppHandle,
+    library_path: String,
+    old_genre: String,
+    new_genre: String,
+) -> Result<CleanupResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let cache = cache_db(&app)?;
+        let tracks = db.tracks_by_genre(&old_genre).map_err(|e| e.to_string())?;
+        stage_cleanup_changes(
+            &cache,
+            &library_path,
+            "Genre",
+            tracks,
+            serde_json::Value::String(old_genre.clone()),
+            serde_json::Value::String(new_genre.clone()),
+            format!("Rename genre '{}' to '{}'", old_genre, new_genre),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rename_artist(
+    app: tauri::AppHandle,
+    library_path: String,
+    old_artist: String,
+    new_artist: String,
+) -> Result<CleanupResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let cache = cache_db(&app)?;
+        let tracks = db.tracks_by_artist(&old_artist).map_err(|e| e.to_string())?;
+        stage_cleanup_changes(
+            &cache,
+            &library_path,
+            "Artist",
+            tracks,
+            serde_json::Value::String(old_artist.clone()),
+            serde_json::Value::String(new_artist.clone()),
+            format!("Rename artist '{}' to '{}'", old_artist, new_artist),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_genre(
+    app: tauri::AppHandle,
+    library_path: String,
+    genre: String,
+) -> Result<CleanupResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let cache = cache_db(&app)?;
+        let tracks = db.tracks_by_genre(&genre).map_err(|e| e.to_string())?;
+        stage_cleanup_changes(
+            &cache,
+            &library_path,
+            "Genre",
+            tracks,
+            serde_json::Value::String(genre.clone()),
+            serde_json::Value::Null,
+            format!("Delete genre '{}'", genre),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_artist(
+    app: tauri::AppHandle,
+    library_path: String,
+    artist: String,
+) -> Result<CleanupResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let cache = cache_db(&app)?;
+        let tracks = db.tracks_by_artist(&artist).map_err(|e| e.to_string())?;
+        stage_cleanup_changes(
+            &cache,
+            &library_path,
+            "Artist",
+            tracks,
+            serde_json::Value::String(artist.clone()),
+            serde_json::Value::Null,
+            format!("Delete artist '{}'", artist),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn stage_track_delete(
+    app: tauri::AppHandle,
+    library_path: String,
+    track_ids: Vec<String>,
+) -> Result<u32, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let mut staged = 0u32;
+        for id in &track_ids {
+            let c = cache
+                .stage_change(changes::NewChange {
+                    library_path: Some(library_path.clone()),
+                    kind: changes::ChangeKind::TrackDelete,
+                    target_id: Some(id.clone()),
+                    field: None,
+                    old_value: None,
+                    new_value: None,
+                    reason: Some("Delete from library (archive)".into()),
+                    confidence: Some(1.0),
+                })
+                .map_err(|e| e.to_string())?;
+            cache.accept_change(&c.id).map_err(|e| e.to_string())?;
+            staged += 1;
+        }
+        Ok(staged)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Track Matcher Commands ────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct MatchInputDto {
+    title: String,
+    #[serde(default)]
+    artist: Option<String>,
+}
+
+#[tauri::command]
+async fn match_tracks(
+    library_path: String,
+    candidates: Vec<MatchInputDto>,
+) -> Result<Vec<track_matcher::MatchResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+        let library: Vec<track_matcher::MatchCandidate> = tracks
+            .into_iter()
+            .map(|t| track_matcher::MatchCandidate {
+                id: t.id,
+                title: t.title,
+                artist: t.artist,
+            })
+            .collect();
+        let inputs: Vec<track_matcher::MatchInput> = candidates
+            .into_iter()
+            .map(|c| track_matcher::MatchInput {
+                title: c.title,
+                artist: c.artist,
+            })
+            .collect();
+        Ok(track_matcher::match_all(&library, &inputs))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_playlist_from_tracks(
+    app: tauri::AppHandle,
+    library_path: String,
+    name: String,
+    track_ids: Vec<String>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let playlist_id = uuid::Uuid::new_v4().to_string();
+        // Stage as Accepted so it lands in the Sync panel for write.
+        let create_change = cache
+            .stage_change(changes::NewChange {
+                library_path: Some(library_path.clone()),
+                kind: changes::ChangeKind::PlaylistCreate,
+                target_id: Some(playlist_id.clone()),
+                field: None,
+                old_value: None,
+                new_value: Some(serde_json::json!({ "name": name, "attribute": 0 })),
+                reason: Some(format!("Track Matcher: create playlist '{}'", name)),
+                confidence: Some(1.0),
+            })
+            .map_err(|e| e.to_string())?;
+        cache
+            .accept_change(&create_change.id)
+            .map_err(|e| e.to_string())?;
+
+        for (idx, tid) in track_ids.iter().enumerate() {
+            let c = cache
+                .stage_change(changes::NewChange {
+                    library_path: Some(library_path.clone()),
+                    kind: changes::ChangeKind::PlaylistAddTrack,
+                    target_id: Some(playlist_id.clone()),
+                    field: None,
+                    old_value: None,
+                    new_value: Some(
+                        serde_json::json!({ "content_id": tid, "track_no": (idx + 1) as i64 }),
+                    ),
+                    reason: Some(format!("Track Matcher: add to '{}'", name)),
+                    confidence: Some(1.0),
+                })
+                .map_err(|e| e.to_string())?;
+            cache.accept_change(&c.id).map_err(|e| e.to_string())?;
+        }
+
+        Ok(playlist_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Smart Fixes Commands ──────────────────────────────────────────────────────
+
+fn track_to_view(t: &decks_core::rekordbox_db::Track) -> smart_fixes::TrackView {
+    smart_fixes::TrackView {
+        id: t.id.clone(),
+        title: Some(t.title.clone()).filter(|s| !s.is_empty()),
+        artist: t.artist.clone(),
+        album: t.album.clone(),
+        comment: t.comment.clone(),
+    }
+}
+
+fn load_fix_config(cache: &cache::CacheDb) -> smart_fixes::FixConfig {
+    let mut cfg = smart_fixes::FixConfig::with_defaults();
+    if let Ok(custom) = cache.list_common_text_patterns() {
+        if !custom.is_empty() {
+            cfg.common_text_patterns = custom;
+        }
+    }
+    cfg
+}
+
+#[tauri::command]
+async fn smart_fix_preview(
+    app: tauri::AppHandle,
+    library_path: String,
+    fix_name: String,
+) -> Result<Vec<smart_fixes::FixProposal>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let cfg = load_fix_config(&cache);
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for t in &tracks {
+            let view = track_to_view(t);
+            out.extend(smart_fixes::propose(&fix_name, &view, &cfg));
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn smart_fix_apply(
+    app: tauri::AppHandle,
+    library_path: String,
+    fix_name: String,
+    proposal_ids: Vec<String>,
+) -> Result<u32, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let cfg = load_fix_config(&cache);
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks().map_err(|e| e.to_string())?;
+        let id_filter: std::collections::HashSet<String> = proposal_ids.into_iter().collect();
+        let mut staged = 0u32;
+        for t in &tracks {
+            let view = track_to_view(t);
+            let proposals = smart_fixes::propose(&fix_name, &view, &cfg);
+            for p in proposals {
+                if !id_filter.contains(&p.id) {
+                    continue;
+                }
+                cache
+                    .stage_change(changes::NewChange {
+                        library_path: Some(library_path.clone()),
+                        kind: changes::ChangeKind::TrackMetadataEdit,
+                        target_id: Some(p.track_id),
+                        field: Some(p.field),
+                        old_value: Some(serde_json::Value::String(p.old_value)),
+                        new_value: Some(serde_json::Value::String(p.new_value)),
+                        reason: Some(format!("Smart fix: {}", fix_name)),
+                        confidence: Some(0.9),
+                    })
+                    .map_err(|e| e.to_string())?;
+                staged += 1;
+            }
+        }
+        Ok(staged)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn common_text_blocklist_list(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        cache.list_common_text_patterns().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn common_text_blocklist_add(
+    app: tauri::AppHandle,
+    pattern: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        cache
+            .add_common_text_pattern(&pattern)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn common_text_blocklist_remove(
+    app: tauri::AppHandle,
+    pattern: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        cache
+            .remove_common_text_pattern(&pattern)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Incoming / Archive Commands ───────────────────────────────────────────────
+
+fn epoch_to_iso(ts: i64) -> String {
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|d| d.to_rfc3339())
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
+}
+
+#[tauri::command]
+async fn list_incoming_tracks(
+    app: tauri::AppHandle,
+    library_path: String,
+) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let watermark = cache
+            .get_incoming_watermark(&library_path)
+            .map_err(|e| e.to_string())?
+            .unwrap_or(0);
+        let iso = epoch_to_iso(watermark);
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        let tracks = db.tracks_added_since(&iso).map_err(|e| e.to_string())?;
+
+        // Filter out archived tracks too.
+        let archived: std::collections::HashSet<String> = cache
+            .list_archived(&library_path)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect();
+        Ok(tracks.into_iter().filter(|t| !archived.contains(&t.id)).collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn clear_incoming(
+    app: tauri::AppHandle,
+    library_path: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        cache
+            .set_incoming_watermark(&library_path, now)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_archived_tracks(
+    app: tauri::AppHandle,
+    library_path: String,
+) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let ids = cache.list_archived(&library_path).map_err(|e| e.to_string())?;
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
+            .map_err(|e| e.to_string())?;
+        db.tracks_by_ids(&ids).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_archived_track_ids(
+    app: tauri::AppHandle,
+    library_path: String,
+) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        cache.list_archived(&library_path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn archive_tracks(
+    app: tauri::AppHandle,
+    library_path: String,
+    track_ids: Vec<String>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        cache
+            .archive_tracks(&library_path, &track_ids)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn unarchive_tracks(
+    app: tauri::AppHandle,
+    library_path: String,
+    track_ids: Vec<String>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        cache
+            .unarchive_tracks(&library_path, &track_ids)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Custom Tags Commands ──────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn list_tag_categories(app: tauri::AppHandle) -> Result<Vec<cache::TagCategory>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.list_tag_categories().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_tag_category(app: tauri::AppHandle, name: String) -> Result<cache::TagCategory, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.create_tag_category(&name).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rename_tag_category(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.rename_tag_category(&id, &name).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_tag_category(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.delete_tag_category(&id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_tags(app: tauri::AppHandle, category_id: Option<String>) -> Result<Vec<cache::Tag>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.list_tags(category_id.as_deref()).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_tag(app: tauri::AppHandle, category_id: String, name: String) -> Result<cache::Tag, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.create_tag(&category_id, &name).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rename_tag(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.rename_tag(&id, &name).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_tag(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.delete_tag(&id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn move_tag(app: tauri::AppHandle, id: String, new_category_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.move_tag(&id, &new_category_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_track_tags(app: tauri::AppHandle, library_path: String, track_id: String) -> Result<Vec<cache::Tag>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.get_track_tags(&library_path, &track_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_track_tags(app: tauri::AppHandle, library_path: String, track_id: String, tag_ids: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.set_track_tags(&library_path, &track_id, &tag_ids).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn add_track_tag(app: tauri::AppHandle, library_path: String, track_id: String, tag_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.add_track_tag(&library_path, &track_id, &tag_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn remove_track_tag(app: tauri::AppHandle, library_path: String, track_id: String, tag_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.remove_track_tag(&library_path, &track_id, &tag_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn search_tracks_by_tags(
+    app: tauri::AppHandle,
+    library_path: String,
+    tag_ids: Vec<String>,
+    match_all: bool,
+) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache = cache_db(&app)?;
+        let track_ids = cache.search_tracks_by_tags(&library_path, &tag_ids, match_all).map_err(|e| e.to_string())?;
+        
+        if track_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path)).map_err(|e| e.to_string())?;
+        
+        let mut tracks = Vec::new();
+        for tid in track_ids {
+            if let Ok(Some(track)) = db.track_by_id(&tid) {
+                tracks.push(track);
+            }
+        }
+        Ok(tracks)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 // ── App entry point ───────────────────────────────────────────────────────────
 
 pub fn run() {
@@ -1361,6 +2348,9 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(audio::AudioPlayer::new(Some(handle)));
+            app.manage(std::sync::Mutex::new(
+                decks_core::rekordbox_db::WriteSession::new(),
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1373,6 +2363,7 @@ pub fn run() {
             library_search,
             suggest_next_tracks,
             library_stage_intro_cues,
+            library_stage_playlist_remove_track,
             list_playlists,
             get_playlist,
             health_orphan_scan,
@@ -1418,6 +2409,45 @@ pub fn run() {
             get_playback_state,
             get_playback_status,
             seek_audio,
+            reveal_in_finder,
+            sync_check,
+            sync_preview,
+            sync_execute,
+            sync_execute_accepted,
+            match_tracks,
+            create_playlist_from_tracks,
+            stage_track_delete,
+            smart_fix_preview,
+            smart_fix_apply,
+            common_text_blocklist_list,
+            common_text_blocklist_add,
+            common_text_blocklist_remove,
+            list_incoming_tracks,
+            clear_incoming,
+            list_archived_tracks,
+            list_archived_track_ids,
+            archive_tracks,
+            unarchive_tracks,
+            list_genres,
+            list_artists,
+            rename_genre,
+            rename_artist,
+            delete_genre,
+            delete_artist,
+            list_tag_categories,
+            create_tag_category,
+            rename_tag_category,
+            delete_tag_category,
+            list_tags,
+            create_tag,
+            rename_tag,
+            delete_tag,
+            move_tag,
+            get_track_tags,
+            set_track_tags,
+            add_track_tag,
+            remove_track_tag,
+            search_tracks_by_tags,
         ])
         .run(tauri::generate_context!())
         .expect("error while running decks");

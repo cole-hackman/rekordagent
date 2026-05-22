@@ -74,10 +74,6 @@ pub fn parse_stream_line(line: &str) -> Option<StreamEvent> {
     }
     let obj: serde_json::Value = serde_json::from_str(trimmed).ok()?;
     match obj.get("type")?.as_str()? {
-        // Defensive: hooks can leak into stdout in some configurations.
-        "system" if obj.get("subtype").and_then(|v| v.as_str()) == Some("hook_started") => {
-            Some(StreamEvent::done())
-        }
         "assistant" => {
             let blocks = obj.get("message")?.get("content")?.as_array()?;
             for block in blocks {
@@ -121,6 +117,36 @@ fn find_claude_binary() -> Option<PathBuf> {
     })
 }
 
+/// Locate the bundled `decks` CLI used as the rekordagent MCP server.
+///
+/// Resolution order:
+/// 1. `REKORDAGENT_MCP_BIN` env override (absolute path)
+/// 2. Sibling of the running executable (production bundle layout)
+/// 3. `target/debug/decks` and `target/release/decks` relative to cwd (dev)
+fn find_decks_binary() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("REKORDAGENT_MCP_BIN") {
+        let path = PathBuf::from(p);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sibling = dir.join("decks");
+            if sibling.is_file() {
+                return Some(sibling);
+            }
+        }
+    }
+    for rel in ["target/debug/decks", "target/release/decks"] {
+        let path = PathBuf::from(rel);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 fn emit(app: &AppHandle, event_name: &str, ev: StreamEvent) {
     let _ = app.emit(event_name, ev);
 }
@@ -151,7 +177,7 @@ pub async fn run(
         format!("{history}\n\nHuman: {message}")
     };
 
-    let args: Vec<String> = vec![
+    let mut args: Vec<String> = vec![
         "--print".into(),
         "--output-format".into(),
         "stream-json".into(),
@@ -165,11 +191,42 @@ pub async fn run(
         system,
     ];
 
+    // Auto-wire the rekordagent MCP server so library tools are available
+    // without the user having to `claude mcp add` it themselves. Bypass
+    // permissions because (a) the spawn is fully local and (b) `--print`
+    // mode cannot prompt interactively.
+    if let Some(decks_bin) = find_decks_binary() {
+        let mcp_config = serde_json::json!({
+            "mcpServers": {
+                "rekordagent": {
+                    "command": decks_bin.to_string_lossy(),
+                    "args": ["mcp"],
+                }
+            }
+        })
+        .to_string();
+        args.extend([
+            "--mcp-config".into(),
+            mcp_config,
+            "--permission-mode".into(),
+            "bypassPermissions".into(),
+        ]);
+    } else {
+        emit(
+            &app,
+            &event_name,
+            StreamEvent::error(
+                "rekordagent MCP binary (decks) not found — library tools unavailable. \
+                 Set REKORDAGENT_MCP_BIN or build with `cargo build -p decks-cli`.",
+            ),
+        );
+    }
+
     let mut child = match Command::new(&binary)
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
     {
         Ok(c) => c,
@@ -188,6 +245,17 @@ pub async fn run(
         let _ = stdin.write_all(prompt.as_bytes()).await;
         let _ = stdin.shutdown().await;
         drop(stdin);
+    }
+
+    // Drain stderr concurrently so the pipe never fills (which would block
+    // the child), and surface its contents for debugging.
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("[claude stderr] {line}");
+            }
+        });
     }
 
     let stdout = match child.stdout.take() {
@@ -290,10 +358,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_hook_started_emits_done() {
+    fn parse_hook_started_is_ignored() {
+        // SessionStart hooks always fire first in the stream; they must NOT
+        // terminate the read loop. Only `type:"result"` does.
         let line = r#"{"type":"system","subtype":"hook_started"}"#;
-        let ev = parse_stream_line(line).expect("event");
-        assert!(matches!(ev.kind, EventKind::Done));
+        assert!(parse_stream_line(line).is_none());
     }
 
     #[test]
