@@ -44,6 +44,40 @@ export const EMPTY_FILTERS: Filters = {
   commentContains: "",
 };
 
+const STORAGE_KEY = "decks.filters.v1";
+
+/** Restore previously-persisted filter state. Always returns a value, even on
+ *  parse failure. `query` and `missingFiles` are deliberately reset so reloads
+ *  don't strand the user inside a heavy scan or a stale search term. */
+export function loadPersistedFilters(): Filters {
+  if (typeof window === "undefined") return EMPTY_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return EMPTY_FILTERS;
+    const parsed = JSON.parse(raw) as Partial<Filters>;
+    return {
+      ...EMPTY_FILTERS,
+      ...parsed,
+      query: "",
+      missingFiles: false,
+    };
+  } catch {
+    return EMPTY_FILTERS;
+  }
+}
+
+export function persistFilters(filters: Filters): void {
+  if (typeof window === "undefined") return;
+  try {
+    const { query: _query, missingFiles: _missingFiles, ...rest } = filters;
+    void _query;
+    void _missingFiles;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+  } catch {
+    // Storage may be full or disabled — silent fail is fine.
+  }
+}
+
 /** Number of non-query filters currently active. The query input is shown
  *  in the header separately, so it isn't counted here. */
 export function activeFilterCount(f: Filters): number {

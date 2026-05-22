@@ -51,6 +51,29 @@ export interface LibraryAnalytics {
   key_distribution: Record<string, number>;
 }
 
+export interface GenreCount {
+  genre: string;
+  count: number;
+}
+
+export interface ArtistCount {
+  artist: string;
+  count: number;
+}
+
+export interface TagCategory {
+  id: string;
+  name: string;
+  seq: number;
+}
+
+export interface Tag {
+  id: string;
+  category_id: string;
+  name: string;
+  seq: number;
+}
+
 /** Mirrors `audio_tags::TrackTags`. */
 export interface TrackTags {
   title: string | null;

@@ -13,6 +13,10 @@ import type {
   AnalysisResult,
   AnlzWaveform,
   RelocateCandidate,
+  GenreCount,
+  ArtistCount,
+  TagCategory,
+  Tag,
 } from "./types";
 import type {
   ChatMessage,
@@ -104,6 +108,10 @@ export async function getPlaybackStatus(): Promise<PlaybackStatus> {
 
 export async function seekAudio(timeSecs: number): Promise<void> {
   return invoke<void>("seek_audio", { timeSecs });
+}
+
+export async function revealInFinder(path: string): Promise<void> {
+  return invoke<void>("reveal_in_finder", { path });
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -295,6 +303,18 @@ export async function libraryStageIntroCues(
   });
 }
 
+export async function libraryStagePlaylistRemoveTrack(
+  libraryPath: string,
+  playlistId: string,
+  trackId: string,
+): Promise<StagedChange> {
+  return invoke<StagedChange>("library_stage_playlist_remove_track", {
+    libraryPath,
+    playlistId,
+    trackId,
+  });
+}
+
 export async function listPlaylists(path: string): Promise<Playlist[]> {
   return invoke<Playlist[]>("list_playlists", { path });
 }
@@ -388,3 +408,305 @@ export async function relocateScan(
     searchRoots,
   });
 }
+
+// ── Sync (master.db write-back) ────────────────────────────────────────────
+
+export interface SyncCheckResult {
+  locked: boolean;
+  pending_changes: number;
+}
+
+export interface ApplyResult {
+  applied: string[];
+  failed: [string, string][];
+}
+
+export async function syncCheck(libraryPath: string): Promise<SyncCheckResult> {
+  return invoke<SyncCheckResult>("sync_check", { libraryPath });
+}
+
+export async function syncExecuteAccepted(libraryPath: string): Promise<ApplyResult> {
+  return invoke<ApplyResult>("sync_execute_accepted", { libraryPath });
+}
+
+export type SyncMode = "full" | "playlist" | "modified";
+
+export interface SyncOptions {
+  playlist_id?: string | null;
+  since_ts?: number | null;
+}
+
+export interface PendingChange {
+  change_id: string;
+  kind: string;
+  track_id: string | null;
+  track_title: string | null;
+  field: string | null;
+  old_value: unknown;
+  new_value: unknown;
+  reason: string | null;
+  updated_at: number;
+}
+
+export async function syncPreview(
+  libraryPath: string,
+  mode: SyncMode = "full",
+  options: SyncOptions = {},
+): Promise<PendingChange[]> {
+  return invoke<PendingChange[]>("sync_preview", { libraryPath, mode, options });
+}
+
+export async function syncExecute(
+  libraryPath: string,
+  mode: SyncMode,
+  options: SyncOptions,
+  changeIds: string[],
+): Promise<ApplyResult> {
+  return invoke<ApplyResult>("sync_execute", {
+    libraryPath,
+    mode,
+    options,
+    changeIds,
+  });
+}
+
+// ── Custom Tags & Cleanup ──────────────────────────────────────────────────
+
+export interface CleanupResult {
+  affected_tracks: number;
+  staged_change_ids: string[];
+}
+
+export async function listGenres(path: string): Promise<GenreCount[]> {
+  return invoke<GenreCount[]>("list_genres", { path });
+}
+
+export async function listArtists(path: string): Promise<ArtistCount[]> {
+  return invoke<ArtistCount[]>("list_artists", { path });
+}
+
+export async function renameGenre(
+  libraryPath: string,
+  oldGenre: string,
+  newGenre: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("rename_genre", { libraryPath, oldGenre, newGenre });
+}
+
+export async function renameArtist(
+  libraryPath: string,
+  oldArtist: string,
+  newArtist: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("rename_artist", { libraryPath, oldArtist, newArtist });
+}
+
+export async function deleteGenre(
+  libraryPath: string,
+  genre: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("delete_genre", { libraryPath, genre });
+}
+
+export async function deleteArtist(
+  libraryPath: string,
+  artist: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("delete_artist", { libraryPath, artist });
+}
+
+// ── Incoming / Archive ─────────────────────────────────────────────────────
+
+export async function listIncomingTracks(libraryPath: string): Promise<Track[]> {
+  return invoke<Track[]>("list_incoming_tracks", { libraryPath });
+}
+
+export async function clearIncoming(libraryPath: string): Promise<void> {
+  return invoke<void>("clear_incoming", { libraryPath });
+}
+
+export async function listArchivedTracks(libraryPath: string): Promise<Track[]> {
+  return invoke<Track[]>("list_archived_tracks", { libraryPath });
+}
+
+export async function listArchivedTrackIds(libraryPath: string): Promise<string[]> {
+  return invoke<string[]>("list_archived_track_ids", { libraryPath });
+}
+
+export async function archiveTracks(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<void> {
+  return invoke<void>("archive_tracks", { libraryPath, trackIds });
+}
+
+export async function unarchiveTracks(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<void> {
+  return invoke<void>("unarchive_tracks", { libraryPath, trackIds });
+}
+
+export async function stageTrackDelete(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<number> {
+  return invoke<number>("stage_track_delete", { libraryPath, trackIds });
+}
+
+// ── Smart Fixes ─────────────────────────────────────────────────────────────
+
+export interface FixProposal {
+  id: string;
+  track_id: string;
+  track_title: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+}
+
+export const SMART_FIX_NAMES = [
+  "fix_casing",
+  "replace_with_space",
+  "fix_encoded_chars",
+  "extract_artist",
+  "extract_remixer",
+  "remove_garbage",
+  "remove_promo",
+  "remove_number_prefix",
+  "remove_urls",
+  "add_mix_parens",
+  "remove_common_text",
+] as const;
+
+export type SmartFixName = (typeof SMART_FIX_NAMES)[number];
+
+export async function smartFixPreview(
+  libraryPath: string,
+  fixName: SmartFixName,
+): Promise<FixProposal[]> {
+  return invoke<FixProposal[]>("smart_fix_preview", { libraryPath, fixName });
+}
+
+export async function smartFixApply(
+  libraryPath: string,
+  fixName: SmartFixName,
+  proposalIds: string[],
+): Promise<number> {
+  return invoke<number>("smart_fix_apply", {
+    libraryPath,
+    fixName,
+    proposalIds,
+  });
+}
+
+export async function commonTextBlocklistList(): Promise<string[]> {
+  return invoke<string[]>("common_text_blocklist_list");
+}
+
+export async function commonTextBlocklistAdd(pattern: string): Promise<void> {
+  return invoke<void>("common_text_blocklist_add", { pattern });
+}
+
+export async function commonTextBlocklistRemove(pattern: string): Promise<void> {
+  return invoke<void>("common_text_blocklist_remove", { pattern });
+}
+
+// ── Track Matcher ──────────────────────────────────────────────────────────
+
+export interface MatchInput {
+  title: string;
+  artist?: string;
+}
+
+export interface MatchedTrack {
+  id: string;
+  title: string;
+  artist: string | null;
+}
+
+export type MatchStatus = "Exact" | "Fuzzy" | "Unmatched";
+
+export interface MatchResult {
+  input_title: string;
+  input_artist: string | null;
+  track: MatchedTrack | null;
+  score: number;
+  status: MatchStatus;
+}
+
+export async function matchTracks(
+  libraryPath: string,
+  candidates: MatchInput[],
+): Promise<MatchResult[]> {
+  return invoke<MatchResult[]>("match_tracks", { libraryPath, candidates });
+}
+
+export async function createPlaylistFromTracks(
+  libraryPath: string,
+  name: string,
+  trackIds: string[],
+): Promise<string> {
+  return invoke<string>("create_playlist_from_tracks", {
+    libraryPath,
+    name,
+    trackIds,
+  });
+}
+
+export async function listTagCategories(): Promise<TagCategory[]> {
+  return invoke<TagCategory[]>("list_tag_categories");
+}
+
+export async function createTagCategory(name: string): Promise<TagCategory> {
+  return invoke<TagCategory>("create_tag_category", { name });
+}
+
+export async function renameTagCategory(id: string, name: string): Promise<void> {
+  return invoke<void>("rename_tag_category", { id, name });
+}
+
+export async function deleteTagCategory(id: string): Promise<void> {
+  return invoke<void>("delete_tag_category", { id });
+}
+
+export async function listTags(categoryId?: string): Promise<Tag[]> {
+  return invoke<Tag[]>("list_tags", { categoryId: categoryId ?? null });
+}
+
+export async function createTag(categoryId: string, name: string): Promise<Tag> {
+  return invoke<Tag>("create_tag", { categoryId, name });
+}
+
+export async function renameTag(id: string, name: string): Promise<void> {
+  return invoke<void>("rename_tag", { id, name });
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  return invoke<void>("delete_tag", { id });
+}
+
+export async function moveTag(id: string, newCategoryId: string): Promise<void> {
+  return invoke<void>("move_tag", { id, newCategoryId });
+}
+
+export async function getTrackTags(libraryPath: string, trackId: string): Promise<Tag[]> {
+  return invoke<Tag[]>("get_track_tags", { libraryPath, trackId });
+}
+
+export async function setTrackTags(libraryPath: string, trackId: string, tagIds: string[]): Promise<void> {
+  return invoke<void>("set_track_tags", { libraryPath, trackId, tagIds });
+}
+
+export async function addTrackTag(libraryPath: string, trackId: string, tagId: string): Promise<void> {
+  return invoke<void>("add_track_tag", { libraryPath, trackId, tagId });
+}
+
+export async function removeTrackTag(libraryPath: string, trackId: string, tagId: string): Promise<void> {
+  return invoke<void>("remove_track_tag", { libraryPath, trackId, tagId });
+}
+
+export async function searchTracksByTags(libraryPath: string, tagIds: string[], matchAll: boolean): Promise<Track[]> {
+  return invoke<Track[]>("search_tracks_by_tags", { libraryPath, tagIds, matchAll });
+}
+
