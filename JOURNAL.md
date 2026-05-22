@@ -750,3 +750,396 @@ And eight frontend tests in `apps/desktop/src/lib/filters.test.ts` for `isInboxT
 - `pnpm --filter desktop tauri build`: fresh DMG + .app on disk.
 - `cargo clippy --workspace --all-targets -- -D warnings`: clean.
 - `pnpm test`: 126 tests passed.
+
+## 2026-05-17 — QA pass: 10 functional bugs that evaded the green suites
+
+### Plan
+Run a deep QA audit assuming the green test baseline is necessary but not sufficient. Read the actual user-visible code paths (Tauri command handlers, chat streaming wiring, audio thread, ANLZ parsers, XML export) and look for cases where the fixtures don't exercise the production trigger. Goal: surface and fix any functional bug that would bite a real user, without expanding scope.
+
+### Findings + Shipped — Pass 1 (6 user-facing bugs)
+
+1. **Missing `stream_claude_code_chat` Tauri command.** The frontend `useAgent` hook invoked `stream_claude_code_chat` for the Claude-Code-host code path, but no such command was defined on this branch. New `apps/desktop/src-tauri/src/claude_agent.rs` spawns `claude --print --output-format stream-json` and emits `text` / `tool_call` / `done` / `error` events on the `claude-stream:{event_id}` channel. Added `parse_stream_line` parser tests.
+2. **ANLZ path-join bug (two call sites).** `library_stage_intro_cues` and `crates/agent-tools/src/service.rs` both joined the absolute ANLZ analysis path without trimming the leading `/`, producing paths that never resolved on disk. Consolidated three implementations into the shared `decks_core::rekordbox_db::anlz::resolve_anlz_path` helper with regression tests.
+3. **Hardcoded Claude model id `claude-opus-4-5` (non-existent).** Replaced with a settings-driven selector (`get/set_agent_model` Tauri commands + `<SettingsPanel>` model selector). Default: Sonnet 4.6. Options: Sonnet 4.6, Opus 4.7, Haiku 4.5.
+4. **Global spacebar handler swallowed button activation.** The keydown listener in `useAudioPlayer` toggled play/pause regardless of focus target, breaking `<button>` and `<a>` activation. Moved the shortcut into the shared `useKeyboardShortcuts` hook, which now excludes `<button>`, `<a>`, and `[role=button]` in addition to input/textarea/contenteditable. Added 5 hook tests; removed a stale `useAudioPlayer` test.
+5. **`is_playing` never cleared at end of track.** `rodio::Sink` doesn't surface end-of-stream events. The audio thread now polls `sink.empty()` between commands and emits `playback-ended` via the `AppHandle`; the frontend listens and clears playback state.
+6. **Relocate banner staged `old_value: null`.** `<RelocateBanner>` staged a `TrackMetadataEdit` for `folder_path` with `old_value: null`, making the diff display as "new metadata" rather than a relocation. Now passes the candidate's original path; also invalidates the `library` + `missing-files` queries on accept so the table refreshes.
+
+### Findings + Shipped — Pass 2 (4 deeper bugs, found by auditing staged-changes/XML export and conversation persistence)
+
+A. **ANLZ section parsers read at fixed offsets before bounds-checking.** PWAV/PWV3/PWV4/PWV5/PQTZ parsers all read fields at hardcoded offsets before verifying the section's length. A truncated or corrupted ANLZ would panic in the audio thread. Added `ensure!` length checks per parser; `for_each_section` now bails on sub-12-byte sections rather than handing too-short slices downstream.
+B. **`PlaylistAddTrack` / `PlaylistRemoveTrack` silently dropped in export.** `generate_export_xml` discarded these when the referenced playlist or track was missing from the live DB, with no error. Replaced with a two-pass apply (Create/Delete first, then mutations) so ordering within the accepted slice doesn't matter; returns `Err` with the offending id when the reference is genuinely missing. `PlaylistDelete` still supersedes mutations targeting the same playlist in the same export.
+C. **Live-DB orphan playlist entries silently dropped.** Existing `djmdSongPlaylist` entries pointing at tracks the live DB no longer has were silently dropped from generated exports. Now collected and logged via `tracing::warn!` with a count and sample of the dropped track IDs.
+D. **One malformed `content_json` killed `load_conversation`.** A single bad row in `conversation_messages` failed the entire load. Now skips unparseable rows with a warn-level log; the rest of the conversation loads normally.
+
+### Verification (2026-05-17)
+- `cargo test --workspace`: 518 passed (was 499; +19 across `claude_agent::parse_stream_line` parser tests, `anlz::resolve_anlz_path` regression tests, intro-cue / ANLZ-bounds / two-pass export tests, and conversation-load skip-on-error test).
+- `cargo clippy --workspace --all-targets -- -D warnings`: clean.
+- `pnpm test`: 139 passed (was 134; +5 for `useKeyboardShortcuts`, +1 for `<SettingsPanel>` model select, −1 stale spacebar test in `useAudioPlayer`).
+- `pnpm typecheck` / `pnpm lint`: clean.
+
+### Note on commit shape
+Commit `e09e8c1` ("fix: QA pass — 10 functional bugs + pre-existing WIP") also lands the pre-existing branch WIP that was sitting uncommitted on `codex/mvp-implementation` (Phase 12–22 UI redesign, agent-tools refactor, MCP server, analytics, inbox view). The 10-bug audit and the WIP are kept in one commit because the pre-existing WIP was already on disk before the audit began.
+
+### Remaining for v0.1.0
+- Manual real-library UI walkthrough (first-run wizard, scroll smoothness, column sort, theme persistence, spacebar focus rules, keychain prompt, chat mount/unmount).
+- Manual launch verification of the freshly-built `decks.app` / DMG.
+- Tag `v0.1.0`.
+
+## 2026-05-18 — Doc-drift sync + auto-fetch symphonia peaks
+
+### Plan
+Manual UI testing isn't available right now, so I'm picking up the two highest-impact items from `docs/UI_AUDIT.md` "Remaining / Deferred": broken-file-path filter and real symphonia-decoded waveform peaks for un-analysed tracks. Also: catch the MD files up to actual code state (README undersold the app, JOURNAL was missing the 2026-05-17 QA pass entry, `docs/tools.md` was stale).
+
+### Findings (audit before implementing)
+- **Broken-file-path filter was already shipped.** `apps/desktop/src/lib/filters.ts:20` declares `missingFiles: boolean`, `:29` declares the lazy `tracksWithMissingFiles: Set<string>` context, `:195` is the predicate. The Tauri command (`list_tracks_with_missing_files` in `src-tauri/src/lib.rs:1148`), TS wrapper (`ipc.ts:317`), FilterDrawer checkbox (`FilterDrawer.tsx:231-250`), FilterChips entry, lazy `useQuery`-gated context hook (`useFilterContext.ts:40-45`), and `<RelocateBanner>` trigger all exist. UI_AUDIT.md was just stale — the audit was written before the filter shipped and never updated.
+- **Symphonia peaks fallback was 90% wired.** `extract_waveform_peaks(path, target_bars)` in `crates/audio-analysis/src/lib.rs`, `get_audio_waveform` Tauri command, `getAudioWaveform` TS IPC wrapper, and `<ColorWaveform>`'s priority cascade (`detail` → `preview` → `peaks`) all existed. `AnlzWaveform.peaks: Option<Vec<f32>>` field was reserved but never populated; instead `TrackDetailPanel` gated the fallback behind a manual "Analyse audio" button (`useState<number[] | null>` + `loadAudioPeaks()`). Real gap: make it automatic.
+
+### Shipped
+- **`apps/desktop/src/components/TrackDetailPanel.tsx`**: replaced the manual `useState`+button peaks loader with a `useQuery` keyed on `["audio-peaks", folderPath]`. `enabled` gates on the ANLZ query having completed *and* returning empty `preview`/`detail` arrays *and* the track having a resolvable `folder_path`, so we never decode when ANLZ would have given us better Pioneer color data. `staleTime: Infinity`, `gcTime: 10 min`, `retry: false` — same shape as the ANLZ query. The "No waveform" / "Could not decode audio" notice now only renders when there's nothing to decode (no folder_path) or when decode failed.
+- **`apps/desktop/src/components/TrackDetailPanel.test.tsx`**: added mocks for `getAnlzWaveform` and `getAudioWaveform`; added four tests covering auto-fetch when ANLZ is empty, no auto-fetch when ANLZ has data, no auto-fetch when folder_path is null, and decode-failure notice.
+- **`docs/UI_AUDIT.md`**: moved "Real waveform rendering" and "Broken-file-path filter" from Remaining/Deferred to a new "Shipped (post-audit follow-ups)" block. Added "Waveform peaks cache persistence" as a follow-up item.
+
+### Also caught up in the same session — doc drift sync
+After noticing the UI_AUDIT staleness, audited every root and `docs/*.md`:
+- **`README.md`**: HTTP MCP, staged changes, XML export, conversation persistence, ANLZ waveform, analytics, relocate, Inbox, intro-cues, Playwright, and the CLI tooling were all live but not advertised. Promoted them to "Implemented today"; trimmed "in progress" to the v0.1.0 manual gate.
+- **`docs/tools.md`**: "Implemented Now" listed only the original 8 MVP tools. Rewrote against `crates/agent-tools/src/types.rs::ToolRequest` + `docs/MCP.md:22-34`; added entries for `read_file_tags`, `analyze_track`, `scan_and_propose_missing`, `bulk_add_intro_cues`, `list_tracks_with_cues`, `list_tracks_in_any_playlist`, `analytics`, `health.fuzzy_duplicate_scan`, `relocate.scan/apply`, `export_accepted_changes`. Moved aspirational tools under a "Phase 3+ — Not yet implemented" banner.
+- **`docs/MANUAL_TEST_PLAN.md`**: smoke result → 13/13 with `RUN_ANALYZE=1`; build date → 2026-05-16 with arm64 / DMG / Info.plist details.
+- **`JOURNAL.md`**: backfilled the missing 2026-05-17 QA-pass entry (10 functional bugs across two passes) sourced from `git show e09e8c1` and `STATUS.md:4`.
+- **`docs/architecture.md`**: crate stack diagram and dependency graph now include `agent-tools`, `relocate`, `stratum-dsp`, `audio-tags`, `audio-analysis`; documented the `decks mcp` / `decks mcp-http` / `decks tools call` CLI subcommands.
+- **`docs/data-model.md`**: replaced the "planned" cache section with the real v1–v4 schema (`audio_features`, conversations, `staged_changes`, `audio_fingerprints`) referencing `crates/cache/src/migrations.rs`.
+
+### Verification (2026-05-18)
+- `cargo fmt --all`: clean (no Rust changes this session).
+- `cargo clippy --workspace --all-targets -- -D warnings`: clean.
+- `cargo test --workspace`: passing (no Rust changes; smoke for regressions).
+- `pnpm typecheck`: clean.
+- `pnpm lint`: clean.
+- `pnpm test`: passing — 4 new tests in `TrackDetailPanel.test.tsx` cover the auto-fetch path.
+
+### Deferred (logged in UI_AUDIT.md)
+- Waveform peaks cache persistence: symphonia decode re-runs after restart. Add a `waveform_peaks` cache table if re-decode latency becomes annoying. Not bothering yet because TanStack Query handles in-session caching and most tracks have ANLZ data anyway.
+
+### Remaining for v0.1.0 (unchanged)
+- Manual real-library UI walkthrough.
+- Packaged-app manual launch verification.
+- Tag `v0.1.0`.
+
+### Side investigation — is the Claude subscription integration fixed?
+Mostly yes, but with three real gaps. The 2026-05-17 QA pass (bug #1) shipped `apps/desktop/src-tauri/src/claude_agent.rs` (spawns `claude --print --output-format stream-json`, parses line-by-line, emits typed events on `claude-stream:{event_id}`) and the `stream_claude_code_chat` Tauri command. `useAgent.ts:222-234` routes to the subprocess when no Anthropic API key is set and `claudeCode.installed && claudeCode.logged_in`.
+
+Gaps surfaced when reading the code (not blockers, but should be addressed before claiming subscription parity):
+
+1. **Routing is API-key-first.** Users with both a key *and* a Claude Code subscription will pay API costs they don't need to. No Settings toggle for preference. Either flip the precedence or add a runtime selector.
+2. **Tool inputs are dropped on the subprocess path.** `useAgent.ts:135` records tool calls with `input: {}` — the subprocess path captures the tool *name* from the stream-json but discards arguments. Tool result rendering will be lossier than the API path until the parser/event surface plumbs `input` through.
+3. **Tool execution depends on user-side MCP setup.** The `claude` CLI doesn't auto-discover Rekordagent's tools — user must run `claude mcp add -s user rekordagent -- $(pwd)/target/debug/decks mcp` (docs/MCP.md:43-46) themselves. Without that, the subprocess gets a vanilla Claude with no library tools.
+4. **`DECISIONS.md` ADR-0002 was never amended.** Reads as if the adapter is still hypothetical. Needs an ADR-0010 (or a "Superseded by …" note on ADR-0002) documenting that the adapter shipped and what it does/doesn't cover. `STATUS.md:85` and `README.md` also still describe Claude Code as detection-only.
+
+Not fixing tonight — flagging so the next session has the gaps written down.
+
+## 2026-05-18 — Lexicon Parity Foundations
+
+### Plan
+- Execute the foundations plan for Lexicon parity features (`.claude-work/plans/lovely-churning-bumblebee.md`).
+- Implement the sidecar schema migration (v5) in `crates/cache`.
+- Add a read-write `WriteGuard` module in `crates/rekordbox-db` to safely execute database mutations, detecting WAL-locks and maintaining automatic backups.
+- Build the `ChangeApplier` inside `crates/changes` to translate `StagedChange` into SQL UPDATEs.
+- Plumb Tauri commands `sync_check` and `sync_execute_accepted` as the backbone for syncing operations to the master database.
+
+### End of session
+- Shipped: Cache migration v5 for all sidecar features, `WriteGuard` in `crates/rekordbox-db/src/write.rs` implementing write-safety check via `master.db-wal` existence and backup creation, `ChangeApplier` for `crates/changes/src/applier.rs` managing mapped schema updates securely, and the matching initial Tauri bindings for frontend integration.
+- Codebase builds successfully with all previous and new unit tests (`cache`, `changes`, and `rekordbox-db`) fully passing.
+- Next: Move onto building frontend UI and application logic to map with these foundations (Custom Tags, Cleanup, Smart Fixes, Sync logic).
+- Blockers: None.
+
+## 2026-05-18 — Genre & Artist Cleanup + Custom Tags Logic
+
+### Plan
+- Implement the backend logic and Tauri commands for Genre & Artist Cleanup (Phase 2, Step 2).
+- Implement the backend logic and Tauri commands for Custom Tags (Phase 3, Step 4).
+- Address the `ChangeApplier` `TODO` by adding foreign-key (`djmdGenre`, `djmdArtist`, etc.) string-to-ID lookup and UUID generation logic.
+
+### End of session
+- Shipped: Added `list_genres`, `list_artists`, `tracks_by_genre`, and `tracks_by_artist` queries to `crates/rekordbox-db`.
+- Shipped: Implemented foreign-key string value resolution and generation within `ChangeApplier`.
+- Shipped: Added Custom Tags structs (`TagCategory`, `Tag`, `TrackTag`) and fully implemented their CRUD operations backed by `sqlite` within `crates/cache/src/store.rs`.
+- Shipped: Registered Tauri commands: `list_genres`, `list_artists`, `rename_genre`, `rename_artist`, `delete_genre`, `delete_artist` (which stage changes as `Accepted`), and Custom Tags CRUD handlers (`list_tag_categories`, `create_tag_category`, `rename_tag_category`, `delete_tag_category`, `list_tags`, `create_tag`, `rename_tag`, `delete_tag`, `move_tag`, `get_track_tags`, `set_track_tags`, `add_track_tag`, `remove_track_tag`, `search_tracks_by_tags`).
+- Next: Build frontend UI for Custom Tags and Metadata Cleanup.
+- Blockers: None.
+
+## 2026-05-18 — Custom Tags & Cleanup Frontend UI
+
+### Plan
+- Build the React components to consume the new `Genre & Artist Cleanup` and `Custom Tags` Tauri IPC commands.
+- Ensure the components align with the app's existing design language, including adding the views to the primary `SidebarNav`.
+- Add keyboard shortcuts (`t` to tag) where necessary.
+
+### End of session
+- Shipped: Designed and integrated `CustomTagsPanel.tsx` allowing users to manage Tag Categories and Tags seamlessly in an accordion format.
+- Shipped: Crafted `CleanupPanel.tsx` — a robust tag cloud-style layout providing high-visibility multi-select capabilities with straightforward `Rename` and `Delete` bulk actions for both Genres and Artists.
+- Shipped: Created `TagPickerModal.tsx` which surfaces as a dialog dynamically when users press `T` after selecting tracks in the primary `TrackTable`. This modal enables multi-track tag assignment logic correctly accounting for partial/full application states.
+- Shipped: Wired all 3 new views correctly into `App.tsx` and updated the `SidebarNav` with new corresponding iconography.
+- Code successfully passes typechecking (`pnpm typecheck`) and strict linting (`pnpm lint`).
+- Next: Move on to backend/frontend implementations for Smart Fixes, Sync logic, or the Track Matcher.
+- Blockers: None.
+
+## 2026-05-19 — Foundations remediation (audit pass over Gemini sessions)
+
+### Plan
+- Address the 6 issues found auditing the Gemini sessions against `.claude-work/plans/lovely-churning-bumblebee.md`:
+  (1) `sync_check` was creating a backup file every call; (2) `WriteGuard` had no
+  per-session dedupe; (3) cleanup commands were writing to `master.db` inline,
+  bypassing review; (4) scope creep landed Custom Tags + Cleanup ahead of the
+  foundations plan; (5) `sync_check`/`sync_execute_accepted` had no IPC wrappers;
+  (6) `ChangeApplier` only handles `TrackMetadataEdit`.
+
+### Shipped
+- `crates/rekordbox-db/src/write.rs`: split `probe_lock` (cheap WAL stat, no I/O)
+  from `acquire_for_write(path, &mut WriteSession)` which only creates a backup
+  the first time a session sees a given library. Old single-shot `acquire` is
+  gone. Added `WriteSession` exported from the crate root. New tests:
+  `probe_lock_does_not_create_backup`, `acquire_for_write_backs_up_once_per_session`,
+  plus updated lock-detection coverage.
+- `apps/desktop/src-tauri/src/lib.rs`: registered `Mutex<WriteSession>` as
+  Tauri-managed state. `sync_check` now uses `probe_lock` (no DB open, no backup).
+  `sync_execute_accepted` threads `WriteSession` so a Cleanup burst produces one
+  `.bak.*` file, not N.
+- Cleanup commands (`rename_genre`, `rename_artist`, `delete_genre`,
+  `delete_artist`) are stage-only — extracted into a shared `stage_cleanup_changes`
+  helper and return `CleanupResult { affected_tracks, staged_change_ids }`. The
+  inline `WriteGuard::acquire` + `applier::apply` blocks are gone; writes go
+  through `sync_execute_accepted` only.
+- `apps/desktop/src/ipc.ts`: added `syncCheck` / `syncExecuteAccepted` wrappers,
+  `SyncCheckResult` / `ApplyResult` / `CleanupResult` types.
+- `apps/desktop/src/components/CleanupPanel.tsx`: rename/delete now stage first,
+  then call `syncCheck` (gate on lock + native confirm with backup-warning copy)
+  before invoking `syncExecuteAccepted`. No more silent writes to `master.db`.
+- `crates/changes/src/applier.rs`: TODO marker on the catch-all arm so the
+  cue/playlist gap is discoverable.
+
+### Verification (2026-05-19)
+- `cargo test -p cache -p changes -p rekordbox-db` — 100 tests pass (was 96;
+  +3 write tests, +1 retained applier test). Build clean for `cargo build` in
+  `apps/desktop/src-tauri`.
+- `pnpm typecheck` and `pnpm lint` (in `apps/desktop`) both clean.
+- Manual exercise against a real `master.db` is still TODO — recorded in
+  Remaining below.
+
+### Remaining
+- Manual smoke against a *copy* of `master.db`: stage two cleanup renames in one
+  session, confirm exactly one `.bak.*` appears, confirm rows updated, and
+  confirm a non-empty `.db-wal` blocks the apply.
+- `ChangeApplier` cue + playlist arms (Sync panel Feature 4 prerequisite).
+- Replace native `prompt`/`confirm` in `CleanupPanel` with a styled dialog —
+  scheduled for the dedicated Sync panel.
+- Outstanding feature work (unchanged from prior session): Smart Fixes (Feature 3),
+  Sync panel UI (Feature 4), Incoming/Archive sub-views (Feature 5),
+  Track Matcher (Feature 7).
+
+### Notes on scope creep (issue #4)
+Custom Tags + Cleanup backends/UIs landed in the same session as the
+foundations PR rather than as a follow-on. The work itself is sound; the only
+real consequence was issue #3 (no review gate), which this session resolved.
+Going forward: keep the original phased order — foundations → individual
+features → Sync panel — so that the user-visible apply step exists before
+Cleanup-style commands can hit `master.db`.
+
+## 2026-05-19 — Phase A: Sync panel + applier arms + Dialog primitive
+
+### Plan
+- Execute Phase A of `.claude-work/plans/lovely-churning-bumblebee.md`:
+  Modularize `ChangeApplier` and fill in all 8 missing arms (cues, playlists);
+  add `sync_preview` + `sync_execute(mode, options, change_ids)`; ship a
+  Dialog primitive (`useDialog`); build `SyncPanel` as the canonical apply
+  surface; refactor `CleanupPanel` to stage-only and route to the Sync panel.
+
+### Shipped
+- `crates/changes/src/applier/` split into `tracks.rs`, `cues.rs`,
+  `playlists.rs`. All 9 `ChangeKind` variants now implemented:
+  TrackMetadataEdit, TrackAddCue, CueMetadataEdit, PlaylistCreate / Rename /
+  Delete / AddTrack / RemoveTrack / ReorderTrack. Column allowlists are
+  per-submodule consts; all values bound. Reorder uses the +10000 trick to
+  avoid UNIQUE(PlaylistID, TrackNo) collisions mid-transaction.
+- `apps/desktop/src-tauri/src/lib.rs`: added `sync_preview` (returns
+  `PendingChange[]` enriched with track titles via a per-call cache) and
+  `sync_execute(library_path, mode, options, change_ids)`. Old
+  `sync_execute_accepted` is kept as a thin Full-mode wrapper for any
+  caller still on the v1 API.
+- `apps/desktop/src/components/ui/Dialog.tsx` + `hooks/useDialog.ts`:
+  imperative `confirm`/`prompt` API. `DialogHost` mounted in `main.tsx`
+  alongside `ToastProvider`. Focus management, ESC + click-outside dismissal,
+  destructive variant.
+- `apps/desktop/src/components/SyncPanel.tsx`: workspace view with mode
+  dropdown (Full / Playlist / Modified), stubbed options group (cue
+  destination, key conversion, "don't touch my grids" — disabled with
+  tooltips, persistence deferred), staged-diff table with per-row include
+  checkbox, Select all / Deselect all, lock-state banner, Apply button
+  with backup-warning confirm. Toasts result.
+- `apps/desktop/src/components/CleanupPanel.tsx`: stage-only. Native
+  `prompt`/`confirm` replaced with `useDialog`. After staging, surfaces a
+  success toast with a "Review & Sync" action that flips the workspace to
+  the new SyncPanel.
+- `apps/desktop/src/components/SidebarNav.tsx`: new `"sync"` WorkspaceView
+  with icon, slotted between Cleanup and Analytics. `App.tsx` routes it.
+
+### Verification (2026-05-19)
+- `cargo test -p cache -p changes -p rekordbox-db` — 111 tests pass (was
+  100; +11 in the changes crate covering the new applier arms).
+- `cargo build` in `apps/desktop/src-tauri` clean.
+- `pnpm typecheck` clean. `pnpm lint` clean (Dialog hook split out to
+  satisfy `react-refresh/only-export-components`).
+- `pnpm test` — 143 frontend tests pass.
+
+### Remaining (next phases)
+- Phase B: Incoming + Archive sub-views (sidecar reads, parent-nav pattern).
+- Phase C: Smart Fixes (11 fix modules in a new `crates/smart-fixes`,
+  preview→stage flow that lands in SyncPanel).
+- Phase D: Track Matcher (paste / .txt / .csv only; external APIs deferred).
+- Wire the Sync panel's stubbed options through to the applier (cue
+  destination routing, key conversion on write, grid skip).
+
+## 2026-05-20 — Phases B, C, D: Incoming/Archive, Smart Fixes, Track Matcher
+
+### Plan
+- Execute the remaining phases of `.claude-work/plans/lovely-churning-bumblebee.md`:
+  - **Phase B**: Incoming + Archive sub-views over sidecar tables.
+  - **Phase C**: Smart Fixes — 11 fix modules in a new `crates/smart-fixes`,
+    preview→stage `Proposed` flow that lands in SyncPanel.
+  - **Phase D**: Track Matcher with paste / `.txt` / `.csv` sources only
+    (external APIs deferred).
+
+### Shipped (Phase B)
+- `crates/rekordbox-db/src/queries/tracks.rs`: `added_since(watermark_iso)` and
+  `tracks_by_ids(ids)` with parameter-chunking. `djmdContent` test schema
+  gained a `DateCreated` column; seed dates added for the fixture tracks.
+- `crates/cache/src/store.rs`: `get_incoming_watermark` / `set_incoming_watermark`
+  (upsert) and `list_archived` / `archive_tracks` / `unarchive_tracks`.
+- Tauri commands: `list_incoming_tracks`, `clear_incoming`,
+  `list_archived_tracks`, `list_archived_track_ids`, `archive_tracks`,
+  `unarchive_tracks`. The incoming list automatically filters archived IDs.
+  Watermark is unix-epoch internally; converted to ISO for the RB query via
+  `chrono` (new desktop crate dep).
+- Frontend: `IncomingView.tsx` + `ArchiveView.tsx`, both reusing `TrackTable`
+  with a `tracksOverride`. Sidebar gained `"incoming"` and `"archive"`
+  `WorkspaceView`s with new icons; App routes them.
+
+### Shipped (Phase C — Smart Fixes)
+- New crate `crates/smart-fixes` (added to workspace):
+  - `TrackView` (minimal subset of fields fixes need), `FixProposal` with
+    deterministic SHA-256-hashed IDs (so preview→apply round-trips work
+    without persistence), `FixConfig` (common-text blocklist + junk
+    separators).
+  - 11 fix modules in `src/fixes/`:
+    `casing` (title-case with small-word handling),
+    `replace_with_space`,
+    `encoded_chars` (HTML entities + Windows-1252 mojibake),
+    `extract_artist` (strict single-separator + non-numeric heuristic),
+    `extract_remixer` (regex; strips Title parenthetical only, since the test
+    schema lacks a Remixer column),
+    `remove_garbage` (control/zero-width strip + `!!!`→`!`),
+    `remove_promo`, `remove_number_prefix`,
+    `remove_urls` (regex for http(s), `www.`, bare domains, emails),
+    `add_mix_parens` (suffix-only; respects existing `()`/`[]`),
+    `remove_common_text` (uses sidecar blocklist).
+- Cache CRUD for `common_text_blocklist`: `list_common_text_patterns`,
+  `add_common_text_pattern`, `remove_common_text_pattern`.
+- Tauri commands: `smart_fix_preview(fix_name)`, `smart_fix_apply(fix_name,
+  proposal_ids)` (re-runs propose and stages the kept IDs as Proposed),
+  `common_text_blocklist_list/add/remove`.
+- Frontend: `SmartFixesPanel.tsx` with one accordion card per fix —
+  Scan → preview table with per-row include checkbox → Stage. After
+  staging, toast offers "Review & Sync" to jump to the Sync panel.
+  Sidebar gained `"smart-fixes"` `WorkspaceView`.
+
+### Shipped (Phase D — Track Matcher)
+- New crate `crates/track-matcher`:
+  - `normalise.rs`: aggressive title normalisation (lowercase, drop
+    `feat.`/`ft.` clauses, strip known mix-suffix parentheticals, drop
+    punctuation, collapse whitespace).
+  - `match_all(library, inputs)`: pre-normalises library once, runs
+    exact full-key match first, then token-sort Levenshtein with a 0.85
+    fuzzy threshold. Returns `MatchResult { input_*, track?, score,
+    status: Exact|Fuzzy|Unmatched }`.
+- Tauri commands: `match_tracks(library_path, candidates)` and
+  `create_playlist_from_tracks(library_path, name, track_ids)` — the
+  latter stages a `PlaylistCreate` + N `PlaylistAddTrack` as Accepted so
+  the user can review and apply in the Sync panel.
+- Frontend: `TrackMatcherView.tsx` — paste / `.txt` upload / `.csv` upload
+  (with title/artist column picker, minimal in-place CSV parser). Two-pane
+  results, summary bar with exact/fuzzy counts, "Create playlist" (uses
+  `useDialog().prompt` for the name), "Export unmatched" (download
+  `unmatched.txt` via a Blob). Sidebar gained `"matcher"` `WorkspaceView`.
+
+### Verification (2026-05-20)
+- Rust: `cargo test -p cache -p changes -p rekordbox-db -p smart-fixes -p track-matcher`
+  — 147 tests pass total (+44 net since end of Phase A: +2 rekordbox-db,
+  +28 smart-fixes, +6 track-matcher, plus carryover from existing crates).
+- Tauri build clean in `apps/desktop/src-tauri`.
+- `pnpm typecheck` clean. `pnpm lint` clean.
+- `pnpm test` — 143 frontend tests pass.
+
+### Remaining (deferred)
+- Sync panel options not yet honored by the applier: cue destination
+  routing, key conversion on write, "don't touch my grids" skip flag.
+  UI exposes them disabled with tooltips.
+- Track Matcher external sources (Spotify, YouTube, Tidal, Apple Music,
+  SoundCloud) — paste/.txt/.csv only this round.
+- Native `confirm()` was removed from CleanupPanel and SyncPanel (now
+  use `useDialog`); native `prompt`/`alert` remain only in DialogHost-less
+  contexts, which there are none of.
+- Track-delete `ChangeKind` (Lexicon's "Delete from library" right-click).
+- `crates/smart-fixes::extract_remixer` only normalises Title — a Remixer
+  field write will land when the schema supports it.
+
+## 2026-05-20 — TrackDelete + Vitest coverage for the new panels
+
+### Plan
+- Address two deferred items chosen because they're verifiable without a real
+  `master.db`:
+  - **#5** TrackDelete `ChangeKind` + applier arm + wire Archive's "Delete
+    from library" right-click.
+  - **#1** Vitest coverage for the five new panels (SyncPanel, IncomingView,
+    ArchiveView, SmartFixesPanel, TrackMatcherView).
+
+### Shipped
+- `crates/changes`: added `ChangeKind::TrackDelete` and
+  `applier/tracks.rs::apply_delete` — soft-delete via
+  `UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?`. The
+  `is_safe_batch_kind` allowlist intentionally does **not** include
+  TrackDelete; user intent is still required per delete. Two new tests
+  cover the happy path and "id not found" error path.
+- `apps/desktop/src-tauri/src/lib.rs`: `stage_track_delete(library_path,
+  track_ids)` Tauri command — stages each delete as Accepted so it shows
+  up in the Sync panel.
+- `ArchiveView.tsx`: new red "Delete from library" button driven by
+  `useDialog().confirm` (destructive variant) + `stageTrackDelete` IPC.
+  Toast offers a "Review & Sync" action that flips to the Sync panel.
+  `onGoToSync` prop wired from App.tsx.
+- `apps/desktop/src/test-utils/providers.tsx`: shared `<WithProviders>`
+  wrapper (QueryClient + ToastProvider + DialogHost) used by all new
+  panel tests.
+- New Vitest specs covering the five panels added in Phases A–D:
+  - `IncomingView.test.tsx`: load, archive-selected, mark-all-reviewed.
+  - `ArchiveView.test.tsx`: load, unarchive, delete-from-library.
+  - `SyncPanel.test.tsx`: empty state, lock banner, row deselect
+    excludes the change id from `syncExecute`, apply round-trip.
+  - `SmartFixesPanel.test.tsx`: lists all 11 cards, scan → preview,
+    Stage calls `smartFixApply` with kept IDs.
+  - `TrackMatcherView.test.tsx`: paste parsing, lone-title heuristic,
+    create-playlist round-trip through the Dialog prompt.
+
+### Verification (2026-05-20)
+- Rust: 149 tests pass (`changes` went from 21 → 23 with the two new
+  TrackDelete arm tests).
+- Frontend: `pnpm test` → 159 tests pass (was 143; +16 from the new
+  panel specs).
+- `pnpm typecheck` + `pnpm lint` clean. `cargo build` in
+  `apps/desktop/src-tauri` clean.
+
+### Remaining (still deferred, unchanged from prior session)
+- Sync panel stub options (cue destination, key conversion, "don't
+  touch my grids") — not yet honored by the applier.
+- Track Matcher external sources (Spotify / YouTube / Tidal / Apple
+  Music / SoundCloud).
+- Manual smoke against a real `master.db` copy — still required before
+  declaring sync write-back production-ready.

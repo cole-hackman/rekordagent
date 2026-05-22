@@ -11,19 +11,27 @@
 Implemented today:
 
 - Read-only Rekordbox 7 SQLCipher library access.
-- Library browser with virtualized track table.
-- Track detail panel with metadata and cue display.
-- Native audio preview play/pause.
-- Settings for theme, library path, and Anthropic API key in the OS keychain.
-- In-app Claude chat panel with read-only tools, staged changes, and XML export through an Anthropic API key.
-- Provider-neutral local MCP server via `decks mcp` for Claude Code, Gemini CLI, and other MCP hosts.
-- Rekordbox XML parse/emit crate.
+- Library browser with virtualized, filterable, sortable track table; resizable columns and multi-select.
+- Track detail panel with metadata and high-fidelity native Pioneer ANLZ color waveform (PWAV/PWV3/PWV4/PWV5).
+- Native audio preview with play/pause, seek, and interactive waveform scrubbing.
+- Settings for theme, library path, Claude model selection, and Anthropic API key in the OS keychain.
+- In-app Claude chat panel with read-only tools, staged changes, inline diff review, and Rekordbox XML export.
+- Conversation persistence in a local SQLite (WAL) cache.
+- Safe staged-change lifecycle (`Proposed → Accepted/Rejected → Exported`); `master.db` is never mutated.
+- One-click audit workflow plus dedicated Inbox view for tracks missing metadata, cues, or playlist membership.
+- Bulk "Add intro cues" tool that reads the real ANLZ beat grid to stage perfect 1.1 downbeat memory cues + 4-bar loops.
+- Smart broken-path Relocate workflow with fuzzy filename + size matching.
+- Analytics dashboard (genre / key / BPM distributions, recharts).
+- Audio-fingerprint duplicate detection (chromagram hash + Hamming grouping).
+- Provider-neutral local MCP server via `decks mcp` (stdio) and `decks mcp-http` (local HTTP) for Claude Code, Gemini CLI, and OpenAI Responses API remote MCP.
+- `decks tools call` diagnostic CLI for direct tool invocation.
+- Rekordbox XML parse/emit crate with round-trip tests.
+- Playwright E2E coverage of the full audit → diff → export path.
 
 MVP work still in progress:
 
-- Real-library manual validation and `v0.1.0` tag.
-- MCP HTTP transport for OpenAI Responses API remote MCP usage.
-- macOS packaged build verification against a real/disposable library.
+- Real-library manual UI walkthrough and `v0.1.0` tag.
+- Manual launch verification of the packaged macOS `.app` / DMG against a real/disposable library.
 
 ## Architecture
 

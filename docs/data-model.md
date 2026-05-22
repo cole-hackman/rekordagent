@@ -57,16 +57,44 @@ The user's Rekordbox 7 `master.db` (SQLCipher-encrypted SQLite) is the primary s
 - `position_ms: u64`
 - `bpm: f64`
 
-## Cache types (to be defined in `crates/cache`)
+## Cache types (`crates/cache`)
 
-### AudioFeatures
-Derived from audio analysis; cached per (track_id, analyzer_version).
+The cache is a local SQLite WAL database whose schema is versioned via `PRAGMA user_version`. Migrations live in `crates/cache/src/migrations.rs`. Current schema version: **v4**.
 
-### Embedding
-512-d CLAP vector; cached per (track_id, model_version, chunking_config).
+### v1 — `audio_features`
+Derived from audio analysis; cached per `(track_uri, analyzer_version)`.
 
-### Conversation
-Persisted agent conversation, messages, tool calls, and tool results. Planned for the MVP conversation persistence phase.
+```
+audio_features (
+    track_uri        TEXT NOT NULL,
+    analyzer_version TEXT NOT NULL,
+    bpm              REAL,
+    musical_key      TEXT,
+    energy           REAL,
+    features_json    TEXT,
+    created_at       INTEGER,
+    PRIMARY KEY (track_uri, analyzer_version)
+)
+```
 
-### Change
-A staged mutation such as a track metadata edit, cue metadata edit, or playlist mutation. Planned changes remain pending until the user accepts/rejects them; accepted changes are exported to Rekordbox XML and never written directly to `master.db`.
+### v2 — `conversations`, `conversation_messages`
+Persisted agent conversations. `conversation_messages.content_json` stores role-tagged content blocks plus tool inputs and results. Indexed by `(library_path, updated_at DESC)` for the conversation selector.
+
+### v3 — `staged_changes`
+Staged mutations. `kind` is a `ChangeKind` discriminant (e.g. `TrackMetadataEdit`, `TrackAddCue`, `PlaylistRename`, `PlaylistCreate`, `PlaylistAddTrack`, `PlaylistRemoveTrack`, `PlaylistDelete`). `status` cycles `Proposed → Accepted/Rejected → Exported`. Indexed by `(library_path, status, updated_at DESC)`.
+
+### v4 — `audio_fingerprints`
+Compact chromagram hash per track for Hamming-distance duplicate grouping.
+
+```
+audio_fingerprints (
+    track_uri   TEXT PRIMARY KEY,
+    chroma_hash BLOB NOT NULL,
+    created_at  INTEGER
+)
+```
+
+### Planned
+
+- **Embedding** — 512-d CLAP vector; cached per `(track_id, model_version, chunking_config)`. Pending `crates/embeddings` (Phase 4).
+- **TransitionPair** — accept/reject history feeding the learned ranker (Phase 5).

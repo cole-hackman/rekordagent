@@ -28,7 +28,9 @@ script at `target/release/decks` by setting `BIN=$PWD/target/release/decks`).
 Evidence (JSON responses) lands in `target/smoke/` for diffing across runs.
 
 Last successful run against `~/Library/Pioneer/rekordbox/master.db` (2026-05-16,
-99 MB library, 99 playlists, 16 folders): 12/12 passed, sha256 unchanged.
+99 MB library, 99 playlists, 16 folders): 13/13 with `RUN_ANALYZE=1` (12/12
+without), sha256 unchanged. `library_analyze_track` on real audio took ~16 s
+on a release build.
 
 ## v0.1.0 Foundation Checklist
 
@@ -94,11 +96,12 @@ Known `v0.1.0` limitations:
 
 ## macOS Build Artifacts
 
-Latest local build completed on 2026-05-11:
+Latest local build completed on 2026-05-16:
 
-- App bundle: `target/release/bundle/macos/decks.app`
-- DMG: `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg`
+- App bundle: `target/release/bundle/macos/decks.app` (arm64 Mach-O)
+- DMG: `target/release/bundle/dmg/decks_0.1.0_aarch64.dmg` (9.1 MB)
 
+Bundle metadata: `CFBundleShortVersionString=0.1.0`, `CFBundleIdentifier=app.decks.desktop`.
 Signing/notarization has not been configured. Treat the DMG as a local unsigned test artifact until release signing is added.
 
 ## Verification Commands

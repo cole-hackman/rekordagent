@@ -170,10 +170,10 @@ No page-load orchestration needed — this is a desktop app with instant local d
 
 ---
 
-## Waveform Placeholder
+## Waveform Placeholder ✓ Resolved (Phase 17, 2026-05-12)
 
-- TrackDetailPanel has a dedicated waveform section that currently renders the text `"waveform"` with a gray background. This is prominent real estate (the full panel width) showing nothing useful.
-- Short-term: replace with a cue position visualization — a horizontal bar showing cue point positions as colored dots using the hot cue color palette. This uses existing data (cues are already fetched) and gives the waveform area meaning before waveform rendering is implemented.
+- ~~TrackDetailPanel renders a gray `"waveform"` placeholder.~~
+- Resolved by the native Pioneer ANLZ parser (`crates/rekordbox-db/src/anlz.rs`) and the high-fidelity `<ColorWaveform>` HTML5 Canvas component, which renders PWAV/PWV3/PWV4/PWV5 sections directly from the user's `.DAT`/`.EXT` files. Phase 21 then added interactive seek/playhead on top of it.
 
 ---
 
@@ -308,11 +308,15 @@ The app still feels like a web dashboard in a desktop shell. Root causes:
 - Removed the click-away blocking backdrop from the `FilterDrawer` so users can scroll/select tracks while adjusting filters.
 - Advanced track selection: Cmd/Ctrl+Click for single/multi-toggle, Shift+Click for ranges, and Cmd+A for "select all" — accompanied by a contextual summary action bar.
 
+### Shipped (post-audit follow-ups)
+
+- ✓ **Real waveform rendering** (2026-05-12 / 2026-05-18): Pioneer ANLZ color waveform (PWAV/PWV3/PWV4/PWV5) renders for analysed tracks via `<ColorWaveform>`. Tracks Rekordbox never analysed now fall back to symphonia-decoded peaks automatically via `extract_waveform_peaks` + the `get_audio_waveform` IPC, surfaced through the same `<ColorWaveform>` component (`peaks` priority below `detail`/`preview`).
+- ✓ **Broken-file-path filter** (shipped earlier): `missingFiles` filter in `src/lib/filters.ts` with `list_tracks_with_missing_files` Tauri command, lazy-loaded `Set<string>` membership check, FilterDrawer toggle, FilterChips entry, and `<RelocateBanner>` trigger.
+
 ### Remaining / Deferred
 
-- **Real waveform rendering**: needs Rust-side `symphonia` audio decode → peak downsample → IPC → `<Waveform data={peaks}>`. The `StaticWaveform` prop interface already accepts real data.
-- **ElevenLabs AudioPlayer**: deferred; existing `useAudioPlayer` + rodio backend already works. Revisit once `currentTime`/`duration` are exposed over IPC.
+- **ElevenLabs AudioPlayer**: deferred; existing `useAudioPlayer` + rodio backend already works. Revisit once richer transport controls are needed.
 - **Streamdown code-splitting**: bundle is ~1.1 MB (gzipped) due to bundled shiki. Split if size becomes a concern.
-- **Broken-file-path filter**: needs fs probe + cache strategy.
+- **Waveform peaks cache persistence**: peaks are currently held in React Query's in-memory cache only; symphonia decode re-runs on app restart. Add a `waveform_peaks` cache table if re-decode latency becomes annoying.
 - **Library-wide duplicate-candidate detection**: needs heuristic + group UI.
 - **Filter persistence**: filter state clears on restart; revisit if users ask.

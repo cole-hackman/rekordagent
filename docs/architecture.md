@@ -16,10 +16,21 @@
 ├─────────────────────────────────────────────────────────┤
 │  Rust core  (crates/*)                                  │
 │  rekordbox-db · rekordbox-xml · audio-analysis          │
-│  audio-tags · enrichment · classify · scoring           │
-│  changes · cache · embeddings                           │
-│  ranker · plugins · decks-core (facade)                 │
+│  audio-tags · stratum-dsp · relocate                    │
+│  agent-tools (shared MCP/CLI/Tauri tool service)        │
+│  changes · cache · classify · scoring · enrichment      │
+│  embeddings · ranker · plugins                          │
+│  decks-core (facade)                                    │
 └─────────────────────────────────────────────────────────┘
+
+In addition to the Tauri desktop app, the workspace ships a `decks` CLI
+binary (`apps/cli`) providing three subcommands:
+
+- `decks mcp` — local stdio MCP server (Claude Code, Gemini CLI, …)
+- `decks mcp-http --bind <addr>` — local HTTP MCP transport for OpenAI
+  Responses API remote-MCP development
+- `decks tools call <tool> --library <path> --json <args>` — direct
+  diagnostic invocation of any shared tool
 ```
 
 ## Key design principles
@@ -32,10 +43,19 @@
 ## Crate dependency graph
 
 ```
-decks-core ──▶ rekordbox-db, rekordbox-xml, cache, changes, scoring, classify
-apps/cli   ──▶ decks-core
-src-tauri  ──▶ decks-core
+decks-core   ──▶ rekordbox-db, rekordbox-xml, cache, changes, scoring,
+                 classify
+agent-tools  ──▶ decks-core, changes, cache, audio-tags, audio-analysis,
+                 relocate
+audio-analysis ─▶ stratum-dsp, audio-tags
+apps/cli     ──▶ decks-core, agent-tools
+src-tauri    ──▶ decks-core, agent-tools, changes, cache
 ```
+
+`agent-tools` is the provider-neutral tool service shared by the local
+MCP server, the diagnostic CLI, and the Tauri chat panel — it owns the
+`ToolRequest` enum and dispatches against the underlying crates so
+behaviour stays aligned across surfaces (see ADR-0003).
 
 Phase 4+ crates (`embeddings`, `prodjlink`, `ranker`, `plugins`) are pulled in by `decks-core` when their features are enabled.
 
