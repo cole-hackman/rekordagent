@@ -1,0 +1,278 @@
+import { useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "../components/Toast";
+import type { TrackContextMenuAction } from "../components/TrackContextMenu";
+import { CONTEXT_MENU_SEPARATOR } from "../components/TrackContextMenuItems";
+import {
+  analyzeTrack,
+  libraryStageIntroCues,
+  libraryStagePlaylistRemoveTrack,
+  playTrack,
+  revealInFinder,
+} from "../ipc";
+import type { Track } from "../types";
+
+interface Options {
+  libraryPath: string;
+  /** Called when the user picks "Show details" so the inspector can be
+   *  forced open if it was previously closed. */
+  onShowDetails: (track: Track) => void;
+  /** When the menu was opened from a playlist row, the playlist id of the
+   *  parent playlist. Unlocks the "Remove from playlist" action. */
+  playlistId?: string;
+}
+
+/** Builds the right-click action set for a Track. Memoised so the menu
+ *  component doesn't rebuild its items on every render. */
+export function useTrackContextActions({
+  libraryPath,
+  onShowDetails,
+  playlistId,
+}: Options): TrackContextMenuAction[] {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const doAnalyze = useCallback(
+    (track: Track) => {
+      if (!track.folder_path) {
+        toast({
+          variant: "error",
+          message: "Cannot analyse",
+          detail: "Track has no audio file path.",
+        });
+        return;
+      }
+      toast({ variant: "info", message: `Analysing ${track.title ?? "track"}…` });
+      void analyzeTrack(libraryPath, track.id)
+        .then((result) => {
+          toast({
+            variant: "success",
+            message: `${track.title ?? "Track"} analysed`,
+            detail: `BPM ${result.bpm.toFixed(1)} · Key ${result.musical_key} · ${(result.confidence * 100).toFixed(0)}% conf.`,
+          });
+        })
+        .catch((e: unknown) => {
+          toast({
+            variant: "error",
+            message: "Analysis failed",
+            detail: e instanceof Error ? e.message : String(e),
+          });
+        });
+    },
+    [libraryPath, toast],
+  );
+
+  const doPlay = useCallback(
+    (track: Track) => {
+      if (!track.folder_path) {
+        toast({ variant: "error", message: "No audio file to play" });
+        return;
+      }
+      void playTrack(track.folder_path).catch((e: unknown) => {
+        toast({
+          variant: "error",
+          message: "Could not start playback",
+          detail: e instanceof Error ? e.message : String(e),
+        });
+      });
+    },
+    [toast],
+  );
+
+  const doReveal = useCallback(
+    (track: Track) => {
+      if (!track.folder_path) {
+        toast({ variant: "error", message: "No file path to reveal" });
+        return;
+      }
+      void revealInFinder(track.folder_path).catch((e: unknown) => {
+        toast({
+          variant: "error",
+          message: "Could not reveal file",
+          detail: e instanceof Error ? e.message : String(e),
+        });
+      });
+    },
+    [toast],
+  );
+
+  const doCopyPath = useCallback(
+    (track: Track) => {
+      const text = track.folder_path ?? "";
+      if (!text) {
+        toast({ variant: "error", message: "No file path to copy" });
+        return;
+      }
+      void navigator.clipboard
+        .writeText(text)
+        .then(() =>
+          toast({ variant: "success", message: "File path copied" }),
+        )
+        .catch(() => toast({ variant: "error", message: "Clipboard blocked" }));
+    },
+    [toast],
+  );
+
+  const doCopyId = useCallback(
+    (track: Track) => {
+      void navigator.clipboard
+        .writeText(track.id)
+        .then(() => toast({ variant: "success", message: "Track ID copied" }))
+        .catch(() => toast({ variant: "error", message: "Clipboard blocked" }));
+    },
+    [toast],
+  );
+
+  const doRemoveFromPlaylist = useCallback(
+    (track: Track) => {
+      if (!playlistId) return;
+      libraryStagePlaylistRemoveTrack(libraryPath, playlistId, track.id)
+        .then(() => {
+          void queryClient.invalidateQueries({ queryKey: ["staged-changes"] });
+          toast({
+            variant: "success",
+            message: "Removal staged",
+            detail: `“${track.title ?? "Track"}” will be removed on next export.`,
+          });
+        })
+        .catch((e: unknown) => {
+          toast({
+            variant: "error",
+            message: "Could not stage removal",
+            detail: e instanceof Error ? e.message : String(e),
+          });
+        });
+    },
+    [libraryPath, playlistId, queryClient, toast],
+  );
+
+  const doStageIntroCue = useCallback(
+    (track: Track) => {
+      libraryStageIntroCues(libraryPath, [track.id])
+        .then((staged) => {
+          void queryClient.invalidateQueries({ queryKey: ["staged-changes"] });
+          toast({
+            variant: "success",
+            message: staged.length
+              ? `Staged intro cue for ${track.title ?? "track"}`
+              : "Nothing to stage — track already has an intro cue or no beat grid",
+          });
+        })
+        .catch((e: unknown) => {
+          toast({
+            variant: "error",
+            message: "Stage intro cue failed",
+            detail: e instanceof Error ? e.message : String(e),
+          });
+        });
+    },
+    [libraryPath, queryClient, toast],
+  );
+
+  return useMemo<TrackContextMenuAction[]>(() => {
+    const actions: TrackContextMenuAction[] = [
+      {
+        id: "show-details",
+        label: "Show details",
+        hint: "Enter",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <path d="M2 2.5A1.5 1.5 0 013.5 1h9A1.5 1.5 0 0114 2.5v11A1.5 1.5 0 0112.5 15h-9A1.5 1.5 0 012 13.5v-11zM4 4v2h8V4H4zm0 3.5v1h8v-1H4zm0 2.5v1h5v-1H4z" />
+          </svg>
+        ),
+        onSelect: onShowDetails,
+      },
+      {
+        id: "play",
+        label: "Play track",
+        hint: "Space",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <path d="M4 2.5a.5.5 0 01.76-.43l8 5.5a.5.5 0 010 .86l-8 5.5A.5.5 0 014 13.5v-11z" />
+          </svg>
+        ),
+        onSelect: doPlay,
+      },
+      {
+        id: "analyze",
+        label: "Analyse audio",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M2 8h2l1.5-4 3 8 2-5 1.5 3H14" />
+          </svg>
+        ),
+        onSelect: doAnalyze,
+      },
+      {
+        id: "stage-intro-cue",
+        label: "Stage intro cue",
+        hint: "Stages change",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <path d="M3 2.5a.5.5 0 01.74-.44l9 5a.5.5 0 010 .88l-9 5A.5.5 0 013 12.5V8H1.5a.5.5 0 010-1H3V2.5z" />
+          </svg>
+        ),
+        onSelect: doStageIntroCue,
+      },
+      CONTEXT_MENU_SEPARATOR,
+      {
+        id: "reveal",
+        label: "Reveal in Finder",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <path d="M1.5 3A1.5 1.5 0 013 1.5h3.586a1.5 1.5 0 011.06.44L8.708 3h4.792A1.5 1.5 0 0115 4.5v8A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9c0-.27.05-.526.14-.76L1.5 3z" />
+          </svg>
+        ),
+        onSelect: doReveal,
+      },
+      {
+        id: "copy-path",
+        label: "Copy file path",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <path d="M4 2.5A1.5 1.5 0 015.5 1h6A1.5 1.5 0 0113 2.5v8A1.5 1.5 0 0111.5 12h-6A1.5 1.5 0 014 10.5v-8zM2.5 4A1.5 1.5 0 001 5.5v8A1.5 1.5 0 002.5 15h6A1.5 1.5 0 0010 13.5V13H5.5A2.5 2.5 0 013 10.5V4h-.5z" />
+          </svg>
+        ),
+        onSelect: doCopyPath,
+      },
+      {
+        id: "copy-id",
+        label: "Copy track ID",
+        icon: (
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+            <path d="M2.5 3a.5.5 0 00-.5.5v9a.5.5 0 00.5.5h11a.5.5 0 00.5-.5v-9a.5.5 0 00-.5-.5h-11zm1.5 3h8v1H4V6zm0 3h5v1H4V9z" />
+          </svg>
+        ),
+        onSelect: doCopyId,
+      },
+    ];
+
+    if (playlistId) {
+      actions.push(CONTEXT_MENU_SEPARATOR, {
+        id: "remove-from-playlist",
+        label: "Remove from playlist",
+        hint: "Stages change",
+        destructive: true,
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 8h10" />
+            <path d="M5.5 5.5L3 8l2.5 2.5" />
+          </svg>
+        ),
+        onSelect: doRemoveFromPlaylist,
+      });
+    }
+
+    return actions;
+  }, [
+    onShowDetails,
+    doPlay,
+    doAnalyze,
+    doStageIntroCue,
+    doReveal,
+    doCopyPath,
+    doCopyId,
+    doRemoveFromPlaylist,
+    playlistId,
+  ]);
+}
