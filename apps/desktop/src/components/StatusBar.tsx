@@ -77,7 +77,7 @@ export function StatusBar({
         {pendingChanges > 0 && (
           <div className="flex items-center gap-1">
             <span className="text-ink-faint">proposed</span>
-            <span className="tabular-nums text-accent-hover">
+            <span className="tabular-nums text-status-info">
               {pendingChanges.toLocaleString()}
             </span>
           </div>

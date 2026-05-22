@@ -9,8 +9,17 @@ import { useTrackCues } from "../hooks/useTrackCues";
 vi.mock("../ipc", () => ({
   analyzeTrack: vi.fn(),
   stageChange: vi.fn(),
+  getAnlzWaveform: vi.fn(),
+  getAudioWaveform: vi.fn(),
 }));
-import { analyzeTrack, stageChange } from "../ipc";
+import {
+  analyzeTrack,
+  stageChange,
+  getAnlzWaveform,
+  getAudioWaveform,
+} from "../ipc";
+
+const EMPTY_ANLZ = { preview: [], detail: [], beat_grid: [], peaks: null };
 
 import { TrackDetailPanel } from "./TrackDetailPanel";
 
@@ -55,6 +64,7 @@ const ANALYSIS: AnalysisResult = {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(useTrackCues).mockReturnValue({
     data: CUES,
     isLoading: false,
@@ -62,6 +72,8 @@ beforeEach(() => {
   } as unknown as ReturnType<typeof useTrackCues>);
   vi.mocked(analyzeTrack).mockResolvedValue(ANALYSIS);
   vi.mocked(stageChange).mockResolvedValue(undefined as never);
+  vi.mocked(getAnlzWaveform).mockResolvedValue(EMPTY_ANLZ as never);
+  vi.mocked(getAudioWaveform).mockResolvedValue([]);
 });
 
 describe("TrackDetailPanel", () => {
@@ -231,6 +243,48 @@ describe("TrackDetailPanel", () => {
         }),
       ),
     );
+  });
+
+  it("auto-fetches symphonia peaks when ANLZ data is empty and folder_path resolves", async () => {
+    vi.mocked(getAnlzWaveform).mockResolvedValue(EMPTY_ANLZ as never);
+    vi.mocked(getAudioWaveform).mockResolvedValue([0.1, 0.5, 0.9, 0.3]);
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    await waitFor(() =>
+      expect(getAudioWaveform).toHaveBeenCalledWith("/music/dark-matter.mp3", 1200),
+    );
+  });
+
+  it("does not fetch symphonia peaks when ANLZ returns real waveform data", async () => {
+    vi.mocked(getAnlzWaveform).mockResolvedValue({
+      preview: [{ height: 10, color: [200, 100, 50] }],
+      detail: [],
+      beat_grid: [],
+      peaks: null,
+    } as never);
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    // Give the ANLZ query a tick to settle; peaks must not fire.
+    await waitFor(() => expect(getAnlzWaveform).toHaveBeenCalled());
+    expect(getAudioWaveform).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch symphonia peaks when track has no folder_path", async () => {
+    vi.mocked(getAnlzWaveform).mockResolvedValue(EMPTY_ANLZ as never);
+    const noPathTrack = { ...BASE_TRACK, folder_path: null };
+    render(<TrackDetailPanel track={noPathTrack} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByText(/No waveform/i)).toBeInTheDocument(),
+    );
+    expect(getAudioWaveform).not.toHaveBeenCalled();
+  });
+
+  it("shows decode-failure notice when symphonia decode errors", async () => {
+    vi.mocked(getAnlzWaveform).mockResolvedValue(EMPTY_ANLZ as never);
+    vi.mocked(getAudioWaveform).mockRejectedValue(new Error("unsupported codec"));
+    render(<TrackDetailPanel track={BASE_TRACK} libraryPath="/tmp/master.db" isPlaying={false} onTogglePlay={vi.fn()} />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByText(/Could not decode audio/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/unsupported codec/i)).toBeInTheDocument();
   });
 
   it("does not show Propose buttons when analysis matches track values", async () => {

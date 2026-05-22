@@ -134,7 +134,7 @@ export function AnalyticsView({ libraryPath }: Props) {
               </span>
             </div>
             <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={bpmData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--border-default) / 0.4)" />
                   <XAxis 
@@ -168,7 +168,7 @@ export function AnalyticsView({ libraryPath }: Props) {
               <h2 className="text-[13px] font-semibold text-ink">Top Genres</h2>
             </div>
             <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={genreData} layout="vertical" margin={{ top: 0, right: 0, left: 10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgb(var(--border-default) / 0.4)" />
                   <XAxis 
@@ -203,7 +203,7 @@ export function AnalyticsView({ libraryPath }: Props) {
               <h2 className="text-[13px] font-semibold text-ink">Top Keys</h2>
             </div>
             <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={keyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--border-default) / 0.4)" />
                   <XAxis 

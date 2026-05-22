@@ -24,6 +24,11 @@ interface Props {
   libraryPath: string;
   selectedTrackId?: string | null;
   onSelectTrack?: (track: Track) => void;
+  onTrackContextMenu?: (
+    track: Track,
+    anchor: { x: number; y: number },
+    options?: { playlistId?: string },
+  ) => void;
 }
 
 interface TreeNode {
@@ -99,6 +104,7 @@ export function PlaylistPanel({
   libraryPath,
   selectedTrackId,
   onSelectTrack,
+  onTrackContextMenu,
 }: Props) {
   const [filter, setFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -259,8 +265,10 @@ export function PlaylistPanel({
         ) : (
           <PlaylistTrackList
             tracks={detail.tracks}
+            playlistId={detail.playlist.id}
             selectedTrackId={selectedTrackId ?? null}
             onSelectTrack={onSelectTrack}
+            onTrackContextMenu={onTrackContextMenu}
           />
         )}
       </div>
@@ -356,12 +364,20 @@ function PlaylistRow({
 
 function PlaylistTrackList({
   tracks,
+  playlistId,
   selectedTrackId,
   onSelectTrack,
+  onTrackContextMenu,
 }: {
   tracks: Track[];
+  playlistId: string;
   selectedTrackId: string | null;
   onSelectTrack?: (track: Track) => void;
+  onTrackContextMenu?: (
+    track: Track,
+    anchor: { x: number; y: number },
+    options?: { playlistId?: string },
+  ) => void;
 }) {
   const dupes = findDuplicates(tracks);
   return (
@@ -386,7 +402,7 @@ function PlaylistTrackList({
         </p>
       </div>
       {/* Column header */}
-      <div className="sticky top-0 z-[5] grid grid-cols-[2rem_1rem_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1fr)_3.5rem_2.75rem_3rem_3rem] gap-2 border-b border-edge bg-surface px-4 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
+      <div className="sticky top-0 z-[5] grid grid-cols-[1.75rem_0.75rem_minmax(110px,2.4fr)_minmax(80px,1.6fr)_minmax(70px,1fr)_3rem_2.5rem_3.25rem_2.75rem] gap-2 border-b border-edge bg-surface px-4 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
         <span className="text-right">#</span>
         <span aria-hidden></span>
         <span>Title</span>
@@ -406,9 +422,14 @@ function PlaylistTrackList({
             key={`${track.id}-${index}`}
             type="button"
             onClick={() => onSelectTrack?.(track)}
-            className={`grid w-full cursor-pointer grid-cols-[2rem_1rem_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1fr)_3.5rem_2.75rem_3rem_3rem] gap-2 border-b border-edge/30 px-4 py-1.5 text-left text-[12px] leading-tight transition-colors ${
+            onContextMenu={(e) => {
+              if (!onTrackContextMenu) return;
+              e.preventDefault();
+              onTrackContextMenu(track, { x: e.clientX, y: e.clientY }, { playlistId });
+            }}
+            className={`grid w-full cursor-pointer grid-cols-[1.75rem_0.75rem_minmax(110px,2.4fr)_minmax(80px,1.6fr)_minmax(70px,1fr)_3rem_2.5rem_3.25rem_2.75rem] gap-2 border-b border-edge/30 px-4 py-1.5 text-left text-[12px] leading-tight transition-colors ${
               track.id === selectedTrackId
-                ? "bg-accent-dim/40 hover:bg-accent-dim/50"
+                ? "bg-accent/12 shadow-[inset_2px_0_0_0_rgb(var(--accent))] hover:bg-accent/15"
                 : "hover:bg-elevated/60"
             }`}
           >

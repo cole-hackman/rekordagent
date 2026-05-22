@@ -133,11 +133,11 @@ describe("DiffReviewPanel", () => {
 
     renderPanel();
 
-    expect(await screen.findByText("Target: track-1")).toBeInTheDocument();
-    expect(screen.queryByText("Target: track-2")).toBeNull();
+    expect(await screen.findByText("Track track-1")).toBeInTheDocument();
+    expect(screen.queryByText("Track track-2")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Accepted: 1" }));
-    expect(await screen.findByText("Target: track-2")).toBeInTheDocument();
-    expect(screen.queryByText("Target: track-1")).toBeNull();
+    expect(await screen.findByText("Track track-2")).toBeInTheDocument();
+    expect(screen.queryByText("Track track-1")).toBeNull();
   });
 });

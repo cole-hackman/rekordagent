@@ -5,7 +5,15 @@ import { useAppStore } from "../store/appStore";
 export type WorkspaceView =
   | "inbox"
   | "library"
+  | "incoming"
+  | "archive"
   | "playlists"
+  | "tags"
+  | "genre-cleanup"
+  | "artist-cleanup"
+  | "smart-fixes"
+  | "matcher"
+  | "sync"
   | "analytics"
   | "changes"
   | "audit"
@@ -37,11 +45,95 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    id: "incoming",
+    label: "Incoming",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <path d="M2 9.5V13a1 1 0 001 1h10a1 1 0 001-1V9.5" />
+        <path d="M5.5 6.5L8 9l2.5-2.5" />
+        <path d="M8 9V2" />
+      </svg>
+    ),
+  },
+  {
+    id: "archive",
+    label: "Archive",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <rect x="1.5" y="3.5" width="13" height="3" rx="0.5" />
+        <path d="M2.5 6.5v6a1 1 0 001 1h9a1 1 0 001-1v-6" />
+        <path d="M6 9h4" />
+      </svg>
+    ),
+  },
+  {
     id: "playlists",
     label: "Playlists",
     icon: (
       <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
         <path d="M1 2.5A.5.5 0 011.5 2h9a.5.5 0 010 1h-9a.5.5 0 01-.5-.5zm0 3A.5.5 0 011.5 5h9a.5.5 0 010 1h-9a.5.5 0 01-.5-.5zm0 3A.5.5 0 011.5 8h6a.5.5 0 010 1h-6a.5.5 0 01-.5-.5zM14 12a2 2 0 11-1.732-1.984V4.5a.5.5 0 011 0v7.5z" />
+      </svg>
+    ),
+  },
+  {
+    id: "tags",
+    label: "Custom Tags",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <path d="M14.5 9.5L9.5 14.5L1.5 6.5V1.5H6.5L14.5 9.5Z" />
+        <circle cx="4" cy="4" r="0.5" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: "genre-cleanup",
+    label: "Genre Cleanup",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <path d="M2 4.5L14 4.5M2 8L14 8M2 11.5L8 11.5M10.5 11.5L14.5 14.5M14.5 11.5L10.5 14.5" />
+      </svg>
+    ),
+  },
+  {
+    id: "artist-cleanup",
+    label: "Artist Cleanup",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <circle cx="8" cy="5" r="2.5" />
+        <path d="M2.5 14.5C2.5 10.5 13.5 10.5 13.5 14.5" />
+        <path d="M11 2L14 5M14 2L11 5" />
+      </svg>
+    ),
+  },
+  {
+    id: "smart-fixes",
+    label: "Smart Fixes",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <path d="M11 1.5L12 4l2.5 1L12 6l-1 2.5L10 6 7.5 5 10 4l1-2.5z" />
+        <path d="M5 7.5L5.6 9l1.5.6L5.6 10.2 5 11.7l-.6-1.5L2.9 9.6 4.4 9 5 7.5z" />
+        <path d="M9 12.5l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4.4-1z" />
+      </svg>
+    ),
+  },
+  {
+    id: "matcher",
+    label: "Track Matcher",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <circle cx="6.5" cy="6.5" r="4" />
+        <path d="M9.5 9.5L13.5 13.5" />
+        <path d="M4 6.5h5M6.5 4v5" />
+      </svg>
+    ),
+  },
+  {
+    id: "sync",
+    label: "Sync",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <path d="M13.5 5.5a5.5 5.5 0 00-10-1.5M2.5 10.5a5.5 5.5 0 0010 1.5" />
+        <path d="M13.5 2.5v3h-3M2.5 13.5v-3h3" />
       </svg>
     ),
   },
@@ -67,8 +159,10 @@ const NAV_ITEMS: NavItem[] = [
     id: "audit",
     label: "Audit",
     icon: (
-      <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
-        <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0zM6.5 3a.5.5 0 01.5.5V6h2.5a.5.5 0 010 1H7v2.5a.5.5 0 01-1 0V7H3.5a.5.5 0 010-1H6V3.5a.5.5 0 01.5-.5z" />
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14" />
+        <path d="M5 7l1.6 1.6L9.2 6" />
       </svg>
     ),
   },

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StagedChange, ChangeStatus } from "../agent/types";
 import { useStagedChanges } from "../hooks/useStagedChanges";
+import { useLibrary } from "../hooks/useLibrary";
 import { useToast } from "./Toast";
 import { ErrorPanel } from "./ErrorPanel";
 
@@ -47,6 +48,12 @@ export function DiffReviewPanel({ libraryPath, onClose }: Props) {
       duration: 6000,
     });
   }, [exportResult, toast]);
+  const { data: tracks = [] } = useLibrary(libraryPath);
+  const trackById = useMemo(() => {
+    const m = new Map<string, { title?: string | null; artist?: string | null }>();
+    for (const t of tracks) m.set(t.id, t);
+    return m;
+  }, [tracks]);
   const counts = countByStatus(changes);
   const proposedCount = counts.Proposed ?? 0;
   const acceptedCount = counts.Accepted ?? 0;
@@ -170,7 +177,11 @@ export function DiffReviewPanel({ libraryPath, onClose }: Props) {
             return (
               <DiffGroup
                 key={targetId}
-                header={`Target: ${targetId}`}
+                header={(() => {
+                  const t = trackById.get(targetId);
+                  if (!t || (!t.title && !t.artist)) return `Track ${targetId.slice(0, 8)}`;
+                  return [t.title ?? "Untitled", t.artist].filter(Boolean).join(" — ");
+                })()}
                 count={groupChanges.length}
                 proposedCount={proposedInGroup.length}
                 disabled={isMutating}

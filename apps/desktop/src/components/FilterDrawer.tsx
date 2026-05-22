@@ -212,21 +212,6 @@ export function FilterDrawer({
           </div>
         </Section>
 
-        {/* Broken paths */}
-        <Section label="Missing files">
-          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-secondary">
-            <input
-              type="checkbox"
-              checked={filters.missingFiles}
-              onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                patch({ missingFiles: e.target.checked })
-              }
-              className="h-3.5 w-3.5 rounded border-edge-strong bg-surface accent-accent"
-            />
-            Show only tracks with missing audio files
-          </label>
-        </Section>
-
         {/* Playlist membership */}
         <Section label="Playlist membership">
           <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-secondary">

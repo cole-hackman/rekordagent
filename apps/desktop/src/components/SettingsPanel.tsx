@@ -57,7 +57,19 @@ export function SettingsPanel({ onClose }: Props) {
       .catch(() => {});
 
     getClaudeCodeStatus()
-      .then(setClaudeCodeStatus)
+      .then((s) =>
+        setClaudeCodeStatus(
+          s ?? {
+            installed: false,
+            version: null,
+            logged_in: null,
+            auth_method: null,
+            subscription_type: null,
+            email: null,
+            error: null,
+          },
+        ),
+      )
       .catch((e) =>
         setClaudeCodeStatus({
           installed: false,
@@ -275,8 +287,15 @@ export function SettingsPanel({ onClose }: Props) {
           </div>
         ) : (
           <div className="rounded-md border border-edge bg-elevated p-3 text-xs text-ink-secondary">
-            Claude Code was not found on this Mac. Current chat runtime uses
-            Anthropic API keys.
+            <p>
+              Claude Code was not found on this Mac. Current chat runtime uses
+              Anthropic API keys.
+            </p>
+            {claudeCodeStatus.error && (
+              <p className="mt-2 font-mono text-[10px] text-status-warn">
+                {claudeCodeStatus.error}
+              </p>
+            )}
           </div>
         )}
       </section>

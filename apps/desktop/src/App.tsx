@@ -9,6 +9,13 @@ import { DiffReviewPanel } from "./components/DiffReviewPanel";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { InboxView } from "./components/InboxView";
 import { SidebarNav, type WorkspaceView } from "./components/SidebarNav";
+import { CustomTagsPanel } from "./components/CustomTagsPanel";
+import { CleanupPanel } from "./components/CleanupPanel";
+import { SyncPanel } from "./components/SyncPanel";
+import { SmartFixesPanel } from "./components/SmartFixesPanel";
+import { TrackMatcherView } from "./components/TrackMatcherView";
+import { IncomingView } from "./components/IncomingView";
+import { ArchiveView } from "./components/ArchiveView";
 import { StatusBar } from "./components/StatusBar";
 import { AuditView } from "./components/AuditView";
 import { FilterDrawer } from "./components/FilterDrawer";
@@ -21,10 +28,13 @@ import { useStagedChanges } from "./hooks/useStagedChanges";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useFilterContext } from "./hooks/useFilterContext";
 import { useLibrary } from "./hooks/useLibrary";
+import { useTrackContextActions } from "./hooks/useTrackContextActions";
+import { TrackContextMenu } from "./components/TrackContextMenu";
 import {
   activeFilterCount,
   distinctValues,
-  EMPTY_FILTERS,
+  loadPersistedFilters,
+  persistFilters,
   type Filters,
 } from "./lib/filters";
 import { getLibraryPath, validateLibraryPath, getTheme } from "./ipc";
@@ -40,7 +50,11 @@ export default function App() {
   const { libraryPath, trackCount, theme, setLibraryConfigured, setTheme } =
     useAppStore();
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>(loadPersistedFilters);
+
+  useEffect(() => {
+    persistFilters(filters);
+  }, [filters]);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
@@ -49,6 +63,11 @@ export default function App() {
   const [pendingAgentPrompt, setPendingAgentPrompt] = useState<string | null>(
     null,
   );
+  const [contextMenu, setContextMenu] = useState<{
+    track: Track;
+    anchor: { x: number; y: number };
+    playlistId?: string;
+  } | null>(null);
 
   const { data: tracks = [] } = useLibrary(libraryPath);
   const { ctx: filterCtx, missingFilesLoading } = useFilterContext(
@@ -86,6 +105,26 @@ export default function App() {
     if (inspector === null) setInspector("details");
   };
 
+  const handleTrackContextMenu = (
+    track: Track,
+    anchor: { x: number; y: number },
+    options?: { playlistId?: string },
+  ) => {
+    setSelectedTrack(track);
+    setSelectedTrackIds(new Set([track.id]));
+    setContextMenu({ track, anchor, playlistId: options?.playlistId });
+  };
+
+  const trackContextActions = useTrackContextActions({
+    libraryPath: libraryPath ?? "",
+    playlistId: contextMenu?.playlistId,
+    onShowDetails: (track) => {
+      setSelectedTrack(track);
+      setSelectedTrackIds(new Set([track.id]));
+      setInspector("details");
+    },
+  });
+
   const handleSelectionChange = (ids: Set<string>) => {
     setSelectedTrackIds(ids);
     if (ids.size === 1) {
@@ -101,6 +140,15 @@ export default function App() {
     setSelectedTrack(null);
     setSelectedTrackIds(new Set());
   }, [libraryPath]);
+
+  // Drop the stale selection when leaving a view that produced it,
+  // so the Details panel doesn't carry an orphaned track into a new context.
+  useEffect(() => {
+    if (currentView !== "library" && currentView !== "playlists" && currentView !== "inbox") {
+      setSelectedTrack(null);
+      setSelectedTrackIds(new Set());
+    }
+  }, [currentView]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -301,6 +349,7 @@ export default function App() {
               selectedTrackIds={selectedTrackIds}
               onSelectionChange={handleSelectionChange}
               onSelect={handleTrackSelect}
+              onTrackContextMenu={handleTrackContextMenu}
             />
           )}
           {currentView === "library" && (
@@ -316,15 +365,68 @@ export default function App() {
                 selectedTrackIds={selectedTrackIds}
                 onSelectionChange={handleSelectionChange}
                 onSelect={handleTrackSelect}
+                onTrackContextMenu={handleTrackContextMenu}
               />
             </>
+          )}
+          {currentView === "incoming" && (
+            <IncomingView
+              libraryPath={libraryPath}
+              selectedTrackIds={selectedTrackIds}
+              onSelectionChange={handleSelectionChange}
+              onSelect={handleTrackSelect}
+              onTrackContextMenu={handleTrackContextMenu}
+            />
+          )}
+          {currentView === "archive" && (
+            <ArchiveView
+              libraryPath={libraryPath}
+              selectedTrackIds={selectedTrackIds}
+              onSelectionChange={handleSelectionChange}
+              onSelect={handleTrackSelect}
+              onTrackContextMenu={handleTrackContextMenu}
+              onGoToSync={() => setCurrentView("sync")}
+            />
           )}
           {currentView === "playlists" && (
             <PlaylistPanel
               libraryPath={libraryPath}
               selectedTrackId={selectedTrack?.id ?? null}
               onSelectTrack={handleTrackSelect}
+              onTrackContextMenu={handleTrackContextMenu}
             />
+          )}
+          {currentView === "tags" && (
+            <CustomTagsPanel />
+          )}
+          {currentView === "genre-cleanup" && (
+            <CleanupPanel
+              mode="genre"
+              libraryPath={libraryPath}
+              onGoToSync={() => setCurrentView("sync")}
+            />
+          )}
+          {currentView === "artist-cleanup" && (
+            <CleanupPanel
+              mode="artist"
+              libraryPath={libraryPath}
+              onGoToSync={() => setCurrentView("sync")}
+            />
+          )}
+          {currentView === "smart-fixes" && (
+            <SmartFixesPanel
+              libraryPath={libraryPath}
+              onGoToSync={() => setCurrentView("sync")}
+            />
+          )}
+          {currentView === "matcher" && (
+            <TrackMatcherView
+              libraryPath={libraryPath}
+              onGoToSync={() => setCurrentView("sync")}
+            />
+          )}
+          {currentView === "sync" && (
+            <SyncPanel libraryPath={libraryPath} />
           )}
           {currentView === "changes" && (
             <DiffReviewPanel libraryPath={libraryPath} />
@@ -347,9 +449,9 @@ export default function App() {
           <ResizablePanel
             side="right"
             className="border-l border-edge bg-base"
-            minWidth={280}
+            minWidth={260}
             maxWidth={800}
-            defaultWidth={320}
+            defaultWidth={280}
           >
             {inspector === "details" && (
               <TrackDetailPanel
@@ -403,6 +505,13 @@ export default function App() {
         availableKeys={availableKeys}
         availableGenres={availableGenres}
         missingFilesLoading={missingFilesLoading}
+      />
+
+      <TrackContextMenu
+        track={contextMenu?.track ?? null}
+        anchor={contextMenu?.anchor ?? null}
+        onClose={() => setContextMenu(null)}
+        actions={trackContextActions}
       />
     </div>
   );

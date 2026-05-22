@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -59,13 +61,13 @@
   --border-strong: 161 161 170;
 
   --text-primary: 24 24 27;
-  --text-secondary: 82 82 91;
-  --text-muted: 113 113 122;
-  --text-faint: 161 161 170;
+  --text-secondary: 63 63 70;
+  --text-muted: 88 88 96;
+  --text-faint: 130 130 140;
 
-  --accent: 217 119 6;         /* amber-600 — readable on light */
-  --accent-hover: 180 83 9;    /* amber-700 */
-  --accent-strong: 146 64 14;  /* amber-800 */
+  --accent: 194 65 12;         /* orange-700 — denser deck-amber on light */
+  --accent-hover: 154 52 18;   /* orange-800 */
+  --accent-strong: 124 45 18;  /* orange-900 — heavy CTA weight */
   --accent-dim: 254 215 170;   /* orange-200 — subtle highlight */
 
   --primary-foreground: 255 255 255;
@@ -106,4 +108,41 @@ body {
   to {
     opacity: 1;
   }
+}
+
+/* Deck-cue pulse — slow amber breath for live agent indicator */
+@keyframes cuePulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 4px rgb(var(--accent) / 0);
+  }
+}
+
+/* Telemetry tick — fast amber dot for tool calls in flight */
+@keyframes telemetryBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Compose chip enter — staggered suggestion reveal */
+@keyframes chipIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.font-deck {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-feature-settings: "tnum" 1, "ss01" 1, "zero" 1;
+}
+
+/* Chamfered (notched-corner) box for hardware-feel buttons */
+.clip-chamfer {
+  clip-path: polygon(
+    6px 0, 100% 0, 100% calc(100% - 6px),
+    calc(100% - 6px) 100%, 0 100%, 0 6px
+  );
 }

@@ -17,6 +17,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { EmptyState } from "./EmptyState";
 import { ErrorPanel } from "./ErrorPanel";
 import { applyFilters, type FilterContext, type Filters } from "../lib/filters";
+import { TagPickerModal } from "./TagPickerModal";
 import type { Track } from "../types";
 
 const ROW_H = 28;
@@ -97,6 +98,7 @@ interface Props {
   selectedTrackIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   onSelect: (track: Track) => void;
+  onTrackContextMenu?: (track: Track, anchor: { x: number; y: number }) => void;
   tracksOverride?: Track[];
 }
 
@@ -107,6 +109,7 @@ export function TrackTable({
   selectedTrackIds,
   onSelectionChange,
   onSelect,
+  onTrackContextMenu,
   tracksOverride,
 }: Props) {
   const { data: fetchedTracks = [], isLoading, error } = useLibrary(libraryPath);
@@ -114,6 +117,8 @@ export function TrackTable({
   
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [showColumnFilters, setShowColumnFilters] = useState(false);
+  const [showTagPicker, setShowTagPicker] = useState(false);
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [isAddingCues, setIsAddingCues] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -246,6 +251,25 @@ export function TrackTable({
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
+      {/* Column-filter toggle row */}
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-edge bg-base px-2 py-1">
+        <button
+          type="button"
+          onClick={() => setShowColumnFilters((v) => !v)}
+          aria-pressed={showColumnFilters}
+          aria-label={showColumnFilters ? "Hide column filters" : "Show column filters"}
+          title={showColumnFilters ? "Hide column filters" : "Show column filters"}
+          className={[
+            "flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider transition-colors",
+            showColumnFilters
+              ? "text-accent-hover"
+              : "text-ink-faint hover:text-ink-secondary",
+          ].join(" ")}
+        >
+          <SearchIcon className="h-2.5 w-2.5" />
+          <span>Column filters</span>
+        </button>
+      </div>
       {/* Column headers */}
       <div
         className="flex border-b border-edge bg-surface text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-muted select-none"
@@ -283,7 +307,7 @@ export function TrackTable({
                 <SortChevron direction={sorted} />
               </div>
 
-              {canFilter && (
+              {canFilter && (showColumnFilters || !!header.column.getFilterValue()) && (
                 <div className="relative px-2 pb-1.5">
                   <div className="relative">
                     <SearchIcon className="absolute left-1.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 text-ink-faint" />
@@ -343,10 +367,15 @@ export function TrackTable({
                 className={[
                   "cursor-pointer border-b border-edge/30 text-[12px] leading-tight text-ink select-none",
                   isSelected
-                    ? "bg-accent-dim/40 hover:bg-accent-dim/50"
+                    ? "bg-accent/12 shadow-[inset_2px_0_0_0_rgb(var(--accent))] hover:bg-accent/15"
                     : "hover:bg-elevated/60",
                 ].join(" ")}
                 onClick={(e) => handleRowClick(e, vItem.index, row.original)}
+                onContextMenu={(e) => {
+                  if (!onTrackContextMenu) return;
+                  e.preventDefault();
+                  onTrackContextMenu(row.original, { x: e.clientX, y: e.clientY });
+                }}
               >
                 {row.getVisibleCells().map((cell) => {
                   const meta = cell.column.columnDef.meta as
@@ -428,6 +457,14 @@ export function TrackTable({
             Deselect
           </button>
         </div>
+      )}
+
+      {showTagPicker && (
+        <TagPickerModal
+          libraryPath={libraryPath}
+          selectedTrackIds={selectedTrackIds}
+          onClose={() => setShowTagPicker(false)}
+        />
       )}
     </div>
   );

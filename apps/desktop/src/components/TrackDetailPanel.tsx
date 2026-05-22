@@ -147,53 +147,53 @@ function CuePositionBar({
     retry: false,
   });
 
-  // Fallback: if Rekordbox never analysed this track, the ANLZ query
-  // returns empty arrays. Let the user decode the audio file directly
-  // for symphonia-derived peaks.
-  const [audioPeaks, setAudioPeaks] = useState<number[] | null>(null);
-  const [peaksLoading, setPeaksLoading] = useState(false);
-  const [peaksError, setPeaksError] = useState<string | null>(null);
-
   const anlzData = waveformQuery.data;
   const anlzHasData =
     !!anlzData &&
     ((anlzData.preview?.length ?? 0) > 0 ||
       (anlzData.detail?.length ?? 0) > 0);
 
+  // Fallback: when Rekordbox never analysed this track, ANLZ returns
+  // empty arrays. Auto-decode the underlying audio file with symphonia
+  // so the waveform area renders something real instead of a placeholder.
+  // Gated on the ANLZ query having completed, so we don't decode if
+  // ANLZ would have given us better Pioneer color data.
+  const peaksQuery = useQuery<number[], Error>({
+    queryKey: ["audio-peaks", folderPath],
+    queryFn: () => getAudioWaveform(folderPath!, 1200),
+    enabled:
+      !!folderPath &&
+      !waveformQuery.isFetching &&
+      !waveformQuery.isPending &&
+      !anlzHasData,
+    staleTime: Infinity,
+    gcTime: 10 * 60 * 1000,
+    retry: false,
+  });
+
   // Merge ANLZ + audio-peaks fallback into a single AnlzWaveform-shaped
   // payload so <ColorWaveform> can render either path.
   const renderData: AnlzWaveform | null = anlzHasData
     ? anlzData!
-    : audioPeaks
+    : peaksQuery.data
       ? {
           preview: [],
           detail: [],
           beat_grid: [],
-          peaks: audioPeaks,
+          peaks: peaksQuery.data,
         }
       : null;
 
   const hasRealPeaks = !!renderData;
+  const peaksLoading = peaksQuery.isFetching;
+  const peaksError = peaksQuery.error?.message ?? null;
 
   const showUnanalysedNotice =
     !waveformQuery.isFetching &&
     !anlzHasData &&
-    !audioPeaks &&
-    !peaksLoading;
-
-  async function loadAudioPeaks() {
-    if (!folderPath) return;
-    setPeaksLoading(true);
-    setPeaksError(null);
-    try {
-      const peaks = await getAudioWaveform(folderPath, 1200);
-      setAudioPeaks(peaks);
-    } catch (e) {
-      setPeaksError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPeaksLoading(false);
-    }
-  }
+    !peaksQuery.data &&
+    !peaksLoading &&
+    (!folderPath || !!peaksError);
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!onSeekFraction) return;
@@ -342,31 +342,21 @@ function CuePositionBar({
           </div>
         )}
 
-        {/* Not-analysed-in-Rekordbox notice */}
+        {/* Not-analysed-in-Rekordbox notice. Shown only when there is no
+            audio file to decode, or when symphonia decode failed. */}
         {showUnanalysedNotice && durationMs !== null && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-elevated/70 px-3 text-center">
-            <span className="font-mono text-[9px] uppercase tracking-wider text-ink-muted">
-              Not analysed in Rekordbox
+            <span className="text-[11px] text-ink-secondary">
+              {peaksError ? "Could not decode audio" : "No waveform"}
             </span>
-            {folderPath && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void loadAudioPeaks();
-                }}
-                className="rounded border border-edge bg-surface px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-secondary transition-colors hover:bg-elevated hover:text-ink"
-              >
-                Generate waveform from audio
-              </button>
+            {peaksError && (
+              <span className="font-mono text-[9px] text-ink-faint">
+                {peaksError}
+              </span>
             )}
           </div>
         )}
       </div>
-
-      {peaksError && (
-        <p className="mt-1 font-mono text-[10px] text-red-400">{peaksError}</p>
-      )}
     </div>
   );
 }

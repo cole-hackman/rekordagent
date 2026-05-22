@@ -67,7 +67,7 @@ describe("ChatPanel", () => {
 
   it("send button enabled when input has text", async () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "hello" } });
     const btn = screen.getByLabelText("Send message");
     expect((btn as HTMLButtonElement).disabled).toBe(false);
@@ -75,7 +75,7 @@ describe("ChatPanel", () => {
 
   it("calls sendMessage on button click and clears input", () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "find jazz tracks" } });
     fireEvent.click(screen.getByLabelText("Send message"));
     expect(mockSendMessage).toHaveBeenCalledWith("find jazz tracks");
@@ -84,7 +84,7 @@ describe("ChatPanel", () => {
 
   it("calls sendMessage on Enter key", () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "list playlists" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     expect(mockSendMessage).toHaveBeenCalledWith("list playlists");
@@ -92,7 +92,7 @@ describe("ChatPanel", () => {
 
   it("does not send on Shift+Enter", () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "hi" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
     expect(mockSendMessage).not.toHaveBeenCalled();

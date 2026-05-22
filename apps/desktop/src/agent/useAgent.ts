@@ -168,6 +168,9 @@ export function useAgent(libraryPath: string | null) {
               }
               return prev;
             });
+            // Stop the spinner as soon as we see done, even if the Tauri
+            // invoke promise is still pending (e.g. the child is finishing).
+            setIsStreaming(false);
           } else if (kind === "error") {
             setError(evText ?? "Claude Code error");
             setMessages((prev) => {
@@ -177,6 +180,7 @@ export function useAgent(libraryPath: string | null) {
               }
               return prev;
             });
+            setIsStreaming(false);
           }
         },
       );

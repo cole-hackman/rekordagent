@@ -12,6 +12,7 @@ interface Props {
   selectedTrackIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   onSelect: (track: Track) => void;
+  onTrackContextMenu?: (track: Track, anchor: { x: number; y: number }) => void;
 }
 
 export function InboxView({
@@ -19,6 +20,7 @@ export function InboxView({
   selectedTrackIds,
   onSelectionChange,
   onSelect,
+  onTrackContextMenu,
 }: Props) {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const { data: tracks = [] } = useLibrary(libraryPath);
@@ -59,7 +61,8 @@ export function InboxView({
         selectedTrackIds={selectedTrackIds}
         onSelectionChange={onSelectionChange}
         onSelect={onSelect}
-        // We override the data inside TrackTable by passing a specialized tracks array, 
+        onTrackContextMenu={onTrackContextMenu}
+        // We override the data inside TrackTable by passing a specialized tracks array,
         // but TrackTable fetches its own data.
         // Let's modify TrackTable to accept a `tracksOverride` prop.
         tracksOverride={filteredInboxTracks}

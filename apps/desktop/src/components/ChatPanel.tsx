@@ -7,7 +7,6 @@ import { ShimmeringText } from "@/components/ui/shimmering-text";
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ui/conversation";
 
@@ -20,6 +19,31 @@ interface Props {
   onPromptConsumed?: () => void;
 }
 
+// ─── Suggestion presets (deck-style hardware buttons) ──────────────────────
+const AUDIT_PROMPT =
+  "Audit missing or bad metadata and playlist issues. Use the available health and playlist tools, summarize the issues, and stage only safe proposed fixes for review. Do not claim anything was applied directly.";
+
+const SUGGESTIONS: { label: string; hint: string; prompt: string }[] = [
+  {
+    label: "Find duplicate tracks",
+    hint: "health · duplicate scan",
+    prompt:
+      "Run a duplicate scan on my library and group results by likely duplicates. Don't stage anything yet — just summarize what you find.",
+  },
+  {
+    label: "Tracks missing metadata",
+    hint: "health · broken links",
+    prompt:
+      "Show me which tracks are missing BPM, key, genre, or artist. Group by issue type and give me counts.",
+  },
+  {
+    label: "List my playlists",
+    hint: "library · playlists",
+    prompt: "List my playlists, grouped by folder if any, with track counts.",
+  },
+];
+
+// ─── Tool-call telemetry row ───────────────────────────────────────────────
 function ToolCallCard({
   name,
   input,
@@ -27,22 +51,28 @@ function ToolCallCard({
   name: string;
   input: Record<string, unknown>;
 }) {
+  // Preserve test contract: `library__search` → `library › search`
   const label = name.replace(/__/g, " › ").replace(/_/g, " ");
   const params = Object.entries(input)
     .filter(([, v]) => v !== undefined && v !== null)
-    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-    .join(", ");
+    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+    .join("  ");
+
   return (
-    <div className="my-1 flex items-start gap-1.5 rounded-md border border-edge-strong bg-surface px-2.5 py-1.5 text-xs text-ink-secondary">
-      <svg
-        viewBox="0 0 16 16"
-        fill="currentColor"
-        className="mt-px h-3 w-3 shrink-0 text-accent-hover"
-      >
-        <path d="M5.433.755a.75.75 0 01.832.27l1.5 2a.75.75 0 01-.164.999L6 5.017l.002.017a7.496 7.496 0 003.96 3.961l.017.002 1.993-1.601a.75.75 0 01.999-.164l2 1.5a.75.75 0 01.27.832l-.75 2.5a.75.75 0 01-.72.536A13.998 13.998 0 010 .75a.75.75 0 01.536-.72l2.5-.75z" />
-      </svg>
-      <span className="font-medium text-ink-secondary">{label}</span>
-      {params && <span className="ml-1 truncate text-ink-muted">{params}</span>}
+    <div className="my-1 flex items-center gap-2.5 border-l border-accent/60 bg-accent/[0.04] py-1 pl-2.5 pr-2 text-[11px]">
+      <span
+        aria-hidden
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+        style={{ animation: "telemetryBlink 1.1s ease-in-out infinite" }}
+      />
+      <span className="font-deck font-medium uppercase tracking-[0.08em] text-accent-hover">
+        {label}
+      </span>
+      {params && (
+        <span className="font-deck min-w-0 truncate text-ink-muted">
+          {params}
+        </span>
+      )}
     </div>
   );
 }
@@ -69,7 +99,7 @@ function AssistantBubble({
           return (
             <Response
               key={i}
-              className="text-[13px] leading-relaxed text-ink"
+              className="text-[13px] leading-[1.55] text-ink"
             >
               {block.text}
             </Response>
@@ -83,11 +113,18 @@ function AssistantBubble({
         return null;
       })}
       {showShimmer && (
-        <ShimmeringText
-          text="Thinking…"
-          className="text-[12px]"
-          spread={1}
-        />
+        <div className="flex items-center gap-2 pt-0.5">
+          <span
+            aria-hidden
+            className="h-1.5 w-1.5 rounded-full bg-accent"
+            style={{ animation: "cuePulse 1.6s ease-in-out infinite" }}
+          />
+          <ShimmeringText
+            text="thinking"
+            className="font-deck text-[10.5px] uppercase tracking-[0.18em] text-ink-secondary"
+            spread={1}
+          />
+        </div>
       )}
     </div>
   );
@@ -171,10 +208,45 @@ function ToolResultSummary({ result }: { result: ToolResultBlock }) {
   }
 
   return (
-    <div className="rounded-md border border-edge bg-surface px-3 py-2 text-sm">
-      <div className="font-medium text-ink">{title}</div>
-      {detail && <div className="mt-0.5 text-xs text-ink-muted">{detail}</div>}
+    <div className="flex items-baseline justify-between gap-3 border-t border-edge/60 py-1.5">
+      <span className="text-[12px] text-ink">{title}</span>
+      {detail && (
+        <span className="font-deck text-[10.5px] uppercase tracking-[0.1em] text-ink-muted">
+          {detail}
+        </span>
+      )}
     </div>
+  );
+}
+
+// ─── Header icon button (consistent hardware look) ─────────────────────────
+function HeaderIconButton({
+  onClick,
+  ariaLabel,
+  title,
+  children,
+  variant = "default",
+}: {
+  onClick: () => void;
+  ariaLabel: string;
+  title?: string;
+  children: React.ReactNode;
+  variant?: "default" | "danger";
+}) {
+  const hover =
+    variant === "danger"
+      ? "hover:text-status-error hover:border-status-error/40"
+      : "hover:text-accent-hover hover:border-accent/40";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      title={title ?? ariaLabel}
+      className={`flex h-6 w-6 items-center justify-center rounded-sm border border-edge/50 text-ink-muted transition-colors ${hover}`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -210,7 +282,7 @@ export function ChatPanel({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, []);
 
   const handleSend = useCallback(() => {
@@ -223,10 +295,16 @@ export function ChatPanel({
 
   const handleAudit = useCallback(() => {
     if (isStreaming) return;
-    void sendMessage(
-      "Audit missing or bad metadata and playlist issues. Use the available health and playlist tools, summarize the issues, and stage only safe proposed fixes for review. Do not claim anything was applied directly.",
-    );
+    void sendMessage(AUDIT_PROMPT);
   }, [isStreaming, sendMessage]);
+
+  const handleSuggestion = useCallback(
+    (prompt: string) => {
+      if (isStreaming) return;
+      void sendMessage(prompt);
+    },
+    [isStreaming, sendMessage],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -235,18 +313,80 @@ export function ChatPanel({
     }
   };
 
+  const charCount = input.length;
+
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l border-edge bg-base animate-[slideInRight_150ms_ease-out]">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-edge px-4 py-2">
-        <div className="min-w-0 flex-1">
-          <span className="text-sm font-semibold text-ink">Agent</span>
-          {conversations.length > 0 && (
+    <div className="flex h-full w-[340px] shrink-0 flex-col border-l border-edge bg-base animate-[slideInRight_180ms_ease-out]">
+      {/* ─── Header ─────────────────────────────────────────────── */}
+      <header className="shrink-0 border-b border-edge">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full bg-accent"
+              style={{
+                animation: isStreaming
+                  ? "cuePulse 1.4s ease-in-out infinite"
+                  : undefined,
+                boxShadow: isStreaming
+                  ? undefined
+                  : "0 0 6px rgb(var(--accent) / 0.5)",
+              }}
+            />
+            <span className="font-deck text-[10.5px] font-semibold uppercase tracking-[0.22em] text-ink">
+              Agent
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <HeaderIconButton
+              onClick={newConversation}
+              ariaLabel="New conversation"
+              title="Start a new conversation"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className="h-3 w-3">
+                <path d="M8 1.75a.75.75 0 01.75.75v4.75h4.75a.75.75 0 010 1.5H8.75v4.75a.75.75 0 01-1.5 0V8.75H2.5a.75.75 0 010-1.5h4.75V2.5A.75.75 0 018 1.75z" />
+              </svg>
+            </HeaderIconButton>
+            {messages.length > 0 && !activeConversationId && (
+              <HeaderIconButton
+                onClick={clearMessages}
+                ariaLabel="Clear chat"
+                title="Clear unsaved messages"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="h-3 w-3">
+                  <path d="M9 2L2 9l5 5h7l-1.5-1.5" />
+                  <path d="M6 6l5 5" />
+                </svg>
+              </HeaderIconButton>
+            )}
+            {activeConversationId && (
+              <HeaderIconButton
+                onClick={() => void deleteActiveConversation()}
+                ariaLabel="Delete conversation"
+                title="Delete this conversation permanently"
+                variant="danger"
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className="h-3 w-3">
+                  <path d="M6.5 1h3a1 1 0 011 1v1h3a.75.75 0 010 1.5h-.5v8A2.5 2.5 0 0110.5 15h-5A2.5 2.5 0 013 12.5v-8h-.5a.75.75 0 010-1.5h3V2a1 1 0 011-1zm1 2h1V2.5h-1V3zm-3 1.5v8A1 1 0 005.5 13.5h5a1 1 0 001-1v-8h-7z" />
+                </svg>
+              </HeaderIconButton>
+            )}
+            <HeaderIconButton onClick={onClose} ariaLabel="Close agent panel">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className="h-3 w-3">
+                <path d="M3.22 3.22a.75.75 0 011.06 0L8 6.94l3.72-3.72a.75.75 0 111.06 1.06L9.06 8l3.72 3.72a.75.75 0 11-1.06 1.06L8 9.06l-3.72 3.72a.75.75 0 01-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 010-1.06z" />
+              </svg>
+            </HeaderIconButton>
+          </div>
+        </div>
+
+        {/* Conversation switcher — its own row, only when there's something to switch to */}
+        {conversations.length > 0 && (
+          <div className="relative px-4 pb-2">
             <select
               aria-label="Conversation"
               value={activeConversationId ?? ""}
               onChange={(event) => void loadConversation(event.target.value)}
-              className="mt-1 w-full rounded-md border border-edge bg-surface px-2 py-1 text-xs text-ink-secondary focus:border-accent focus:outline-none"
+              className="w-full cursor-pointer appearance-none rounded-sm border border-edge bg-transparent py-1 pl-2 pr-7 text-[12px] text-ink-secondary transition-colors hover:border-accent/40 focus:border-accent focus:text-ink focus:outline-none"
             >
               <option value="" disabled>
                 Select conversation
@@ -257,127 +397,114 @@ export function ChatPanel({
                 </option>
               ))}
             </select>
-          )}
-        </div>
-        <div className="ml-2 flex items-center gap-1">
-          <button
-            onClick={newConversation}
-            aria-label="New conversation"
-            title="New conversation"
-            className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-              <path d="M8 1.75a.75.75 0 01.75.75v4.75h4.75a.75.75 0 010 1.5H8.75v4.75a.75.75 0 01-1.5 0V8.75H2.5a.75.75 0 010-1.5h4.75V2.5A.75.75 0 018 1.75z" />
-            </svg>
-          </button>
-          {messages.length > 0 && (
-            <button
-              onClick={clearMessages}
-              aria-label="Clear chat"
-              title="Clear conversation"
-              className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
+            <svg
+              aria-hidden
+              viewBox="0 0 10 6"
+              className="pointer-events-none absolute right-6 top-1/2 h-1.5 w-2.5 -translate-y-1/2 text-ink-muted"
             >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-                <path d="M2.5 1a1 1 0 00-1 1v1a1 1 0 001 1H3v9a2 2 0 002 2h6a2 2 0 002-2V4h.5a1 1 0 001-1V2a1 1 0 00-1-1H10a1 1 0 00-1-1H7a1 1 0 00-1 1H2.5zm3 4a.5.5 0 011 0v7a.5.5 0 01-1 0V5zm3 0a.5.5 0 011 0v7a.5.5 0 01-1 0V5z" />
-              </svg>
-            </button>
-          )}
-          {activeConversationId && (
-            <button
-              onClick={() => void deleteActiveConversation()}
-              aria-label="Delete conversation"
-              title="Delete conversation"
-              className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
-            >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-                <path d="M6.5 1h3a1 1 0 011 1v1h3a.75.75 0 010 1.5h-.5v8A2.5 2.5 0 0110.5 15h-5A2.5 2.5 0 013 12.5v-8h-.5a.75.75 0 010-1.5h3V2a1 1 0 011-1zm1 2h1V2.5h-1V3zm-3 1.5v8A1 1 0 005.5 13.5h5a1 1 0 001-1v-8h-7z" />
-              </svg>
-            </button>
-          )}
-          <button
-            onClick={onClose}
-            aria-label="Close agent panel"
-            className="rounded p-1 text-ink-muted transition-colors hover:text-ink-secondary"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
-              <path d="M3.22 3.22a.75.75 0 011.06 0L8 6.94l3.72-3.72a.75.75 0 111.06 1.06L9.06 8l3.72 3.72a.75.75 0 11-1.06 1.06L8 9.06l-3.72 3.72a.75.75 0 01-1.06-1.06L6.94 8 3.22 4.28a.75.75 0 010-1.06z" />
+              <path d="M0 0l5 6 5-6" fill="currentColor" />
             </svg>
-          </button>
-        </div>
-      </div>
+          </div>
+        )}
+      </header>
 
-      {/* Messages */}
+      {/* ─── Messages OR Empty state ────────────────────────────── */}
       {messages.length === 0 && !error ? (
-        <div className="flex flex-1 flex-col">
-          <ConversationEmptyState
-            className="flex-1"
-            icon={
-              <svg
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                className="h-6 w-6 text-accent-hover"
-              >
-                <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
-              </svg>
-            }
-            title={
-              <span className="text-[13px] font-semibold text-ink">
-                Agent Assistant
-              </span>
-            }
-            description={
-              <span className="text-[12px] text-ink-secondary">
-                Ask questions about your library, or find missing metadata
-                and duplicates.
-                <br />
-                <span className="mt-2 block text-[11px] text-ink-faint">
-                  Scan → Propose changes → Review → Export
-                </span>
-              </span>
-            }
+        <div className="flex flex-1 flex-col items-center justify-center px-6 py-8">
+          {/* Hero motif — chamfered amber lozenge */}
+          <div
+            className="clip-chamfer mb-5 flex h-14 w-14 items-center justify-center bg-accent-dim/30"
+            style={{ boxShadow: "inset 0 0 0 1px rgb(var(--accent) / 0.35)" }}
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-edge bg-surface">
-                <svg
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  className="h-6 w-6 text-accent-hover"
-                >
-                  <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z" />
-                </svg>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[13px] font-semibold text-ink">
-                  Agent Assistant
-                </p>
-                <p className="text-[12px] text-ink-secondary">
-                  Ask questions about your library, or find missing metadata
-                  and duplicates.
-                </p>
-                <p className="text-[11px] text-ink-faint">
-                  Scan → Propose changes → Review → Export
-                </p>
-              </div>
-              <button
-                onClick={handleAudit}
-                disabled={isStreaming}
-                className="mt-1 rounded-md bg-elevated px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-hover disabled:opacity-40"
-              >
-                Start Library Audit
-              </button>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6 text-accent-hover">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.5L20 7v10l-8 4.5L4 17V7l8-4.5z" />
+              <circle cx="12" cy="12" r="2.25" fill="currentColor" />
+            </svg>
+          </div>
+
+          <p className="font-deck text-[10.5px] font-semibold uppercase tracking-[0.28em] text-accent-hover">
+            Agent Assistant
+          </p>
+          <p className="mt-3 max-w-[260px] text-center text-[12.5px] leading-[1.55] text-ink-secondary">
+            Ask about your library, find duplicate tracks, or stage metadata
+            fixes for review.
+          </p>
+
+          {/* Pipeline rail */}
+          <div className="mt-4 flex items-center gap-2 font-deck text-[9.5px] uppercase tracking-[0.18em] text-ink-faint">
+            <span>Scan</span>
+            <span className="h-px w-3 bg-edge-strong" />
+            <span>Propose</span>
+            <span className="h-px w-3 bg-edge-strong" />
+            <span>Review</span>
+            <span className="h-px w-3 bg-edge-strong" />
+            <span>Export</span>
+          </div>
+
+          {/* Primary CTA — chamfered amber deck button */}
+          <button
+            onClick={handleAudit}
+            disabled={isStreaming}
+            className="clip-chamfer group mt-7 flex items-center gap-2.5 bg-accent-strong px-5 py-2.5 text-[11.5px] font-semibold uppercase tracking-[0.16em] text-white transition-all hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ boxShadow: "0 0 0 1px rgb(var(--accent) / 0.4), 0 0 18px -4px rgb(var(--accent) / 0.55)" }}
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className="h-3 w-3">
+              <path d="M3 2l11 6-11 6V2z" />
+            </svg>
+            <span>Start Library Audit</span>
+          </button>
+
+          {/* Suggestion chips */}
+          <div className="mt-6 w-full max-w-[280px]">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="h-px flex-1 bg-edge" />
+              <span className="font-deck text-[9.5px] uppercase tracking-[0.22em] text-ink-faint">
+                or try
+              </span>
+              <span className="h-px flex-1 bg-edge" />
             </div>
-          </ConversationEmptyState>
+            <div className="flex flex-col gap-1.5">
+              {SUGGESTIONS.map((s, i) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  disabled={isStreaming}
+                  onClick={() => handleSuggestion(s.prompt)}
+                  className="group flex items-center justify-between gap-2 rounded-sm border border-edge bg-surface/50 px-3 py-1.5 text-left transition-colors hover:border-accent/50 hover:bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{
+                    opacity: 0,
+                    animation: `chipIn 280ms ease-out ${180 + i * 70}ms forwards`,
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px] text-ink group-hover:text-ink">
+                      {s.label}
+                    </div>
+                    <div className="font-deck mt-0.5 text-[9.5px] uppercase tracking-[0.12em] text-ink-muted">
+                      {s.hint}
+                    </div>
+                  </div>
+                  <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden className="h-2.5 w-2.5 shrink-0 text-ink-faint transition-colors group-hover:text-accent-hover">
+                    <path d="M2 5h6m-2-3l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
         <Conversation className="flex-1">
-          <ConversationContent className="flex flex-col gap-2 p-3">
+          <ConversationContent className="flex flex-col gap-2 px-4 py-3">
             {messages.map((msg, i) => {
               const isLastAssistant =
                 msg.role === "assistant" && i === messages.length - 1;
               if (msg.role === "user") {
                 return (
                   <Message key={i} from="user">
-                    <MessageContent variant="contained" className="text-[13px]">
+                    <MessageContent
+                      variant="contained"
+                      className="text-[13px] leading-[1.5]"
+                    >
                       {msg.text}
                     </MessageContent>
                   </Message>
@@ -400,7 +527,7 @@ export function ChatPanel({
                 );
               }
               return (
-                <div key={i} className="flex flex-col gap-2">
+                <div key={i} className="flex flex-col">
                   {msg.results.map((result) => (
                     <ToolResultSummary
                       key={result.tool_use_id}
@@ -412,8 +539,11 @@ export function ChatPanel({
             })}
 
             {error && (
-              <div className="rounded-md bg-red-950/60 px-3 py-2 text-xs text-red-400">
-                {error}
+              <div className="flex items-start gap-2 border-l-2 border-status-error bg-status-error/10 px-3 py-2 text-[12px] text-status-error">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className="mt-0.5 h-3 w-3 shrink-0">
+                  <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a1 1 0 011 1v4a1 1 0 11-2 0V5a1 1 0 011-1zm0 8a1 1 0 110 2 1 1 0 010-2z" />
+                </svg>
+                <span>{error}</span>
               </div>
             )}
           </ConversationContent>
@@ -421,9 +551,14 @@ export function ChatPanel({
         </Conversation>
       )}
 
-      {/* Input */}
-      <div className="shrink-0 border-t border-edge p-3">
-        <div className="flex items-end gap-2">
+      {/* ─── Composer ───────────────────────────────────────────── */}
+      <div className="shrink-0 border-t border-edge bg-base/50 px-4 pt-3 pb-2">
+        <div
+          className="group relative flex items-end gap-2 rounded-md border border-edge-strong bg-surface px-3 py-2 transition-colors focus-within:border-accent/60"
+          style={{
+            boxShadow: "inset 0 1px 0 rgb(var(--text-primary) / 0.03)",
+          }}
+        >
           <textarea
             ref={textareaRef}
             value={input}
@@ -432,24 +567,51 @@ export function ChatPanel({
               resizeTextarea();
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Message…"
+            placeholder="Ask the agent…"
             rows={1}
-            className="flex-1 resize-none rounded-md border border-edge-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+            className="min-h-[20px] flex-1 resize-none bg-transparent text-[13px] leading-[1.45] text-ink placeholder:text-ink-faint focus:outline-none"
           />
           <button
             onClick={handleSend}
             disabled={isStreaming || input.trim() === ""}
             aria-label="Send message"
-            className="shrink-0 rounded-md bg-accent-strong p-2 text-white transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className="clip-chamfer relative flex h-7 w-7 shrink-0 items-center justify-center bg-accent-strong text-white transition-all hover:bg-accent disabled:cursor-not-allowed disabled:bg-edge-strong disabled:text-ink-faint"
+            style={
+              !isStreaming && input.trim() !== ""
+                ? {
+                    boxShadow:
+                      "0 0 0 1px rgb(var(--accent) / 0.4), 0 0 12px -2px rgb(var(--accent) / 0.55)",
+                  }
+                : undefined
+            }
           >
             {isStreaming ? (
-              <div className="h-4 w-4 animate-spin rounded-full border border-white/30 border-t-white" />
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border border-white/30 border-t-white" />
             ) : (
-              <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
-                <path d="M15.964.686a.5.5 0 00-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 00-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 00.886-.083l6-15z" />
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className="h-3 w-3 translate-x-px">
+                <path d="M3 2l11 6-11 6V2z" />
               </svg>
             )}
           </button>
+        </div>
+
+        {/* Composer status bar */}
+        <div className="mt-1.5 flex items-center justify-between px-1 text-ink-faint">
+          <span className="font-deck text-[9.5px] uppercase tracking-[0.18em]">
+            {isStreaming ? (
+              <span className="text-accent-hover">streaming…</span>
+            ) : (
+              <>
+                <kbd className="font-deck text-[9.5px]">⏎</kbd> send ·{" "}
+                <kbd className="font-deck text-[9.5px]">⇧⏎</kbd> newline
+              </>
+            )}
+          </span>
+          {charCount > 0 && (
+            <span className="font-deck text-[9.5px] uppercase tracking-[0.14em] tabular-nums">
+              {charCount} ch
+            </span>
+          )}
         </div>
       </div>
     </div>
