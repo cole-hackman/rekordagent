@@ -14,7 +14,9 @@ vi.mock("../ipc", async () => {
   };
 });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function render_() {
   return render(

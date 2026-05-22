@@ -85,8 +85,10 @@ pub fn parse_stream_line(line: &str) -> Option<StreamEvent> {
                         }
                     }
                     Some("tool_use") => {
-                        let name =
-                            block.get("name").and_then(|v| v.as_str()).unwrap_or("(tool)");
+                        let name = block
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("(tool)");
                         return Some(StreamEvent::tool_call(name));
                     }
                     _ => {}
@@ -261,7 +263,11 @@ pub async fn run(
     let stdout = match child.stdout.take() {
         Some(s) => s,
         None => {
-            emit(&app, &event_name, StreamEvent::error("no stdout from claude"));
+            emit(
+                &app,
+                &event_name,
+                StreamEvent::error("no stdout from claude"),
+            );
             emit(&app, &event_name, StreamEvent::done());
             let _ = child.wait().await;
             return Ok(());

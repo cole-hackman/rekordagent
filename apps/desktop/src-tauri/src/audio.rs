@@ -196,7 +196,6 @@ impl AudioPlayer {
         Self { tx, state }
     }
 
-
     pub fn send(&self, cmd: AudioCmd) -> Result<(), String> {
         self.tx.send(cmd).map_err(|e| e.to_string())
     }

@@ -10,7 +10,9 @@ vi.mock("../ipc", () => ({
   createPlaylistFromTracks: vi.fn(),
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function render_() {
   return render(

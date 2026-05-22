@@ -48,11 +48,7 @@ pub fn match_all(library: &[MatchCandidate], inputs: &[MatchInput]) -> Vec<Match
     let normalised_lib: Vec<(String, String)> = library
         .iter()
         .map(|c| {
-            let combined = format!(
-                "{} {}",
-                c.artist.as_deref().unwrap_or(""),
-                c.title
-            );
+            let combined = format!("{} {}", c.artist.as_deref().unwrap_or(""), c.title);
             (normalise::title_only(&c.title), normalise::full(&combined))
         })
         .collect();
@@ -68,11 +64,7 @@ fn match_one(
     normalised_lib: &[(String, String)],
     input: &MatchInput,
 ) -> MatchResult {
-    let combined_input = format!(
-        "{} {}",
-        input.artist.as_deref().unwrap_or(""),
-        input.title
-    );
+    let combined_input = format!("{} {}", input.artist.as_deref().unwrap_or(""), input.title);
     let key_full = normalise::full(&combined_input);
     let key_title = normalise::title_only(&input.title);
 
@@ -98,7 +90,7 @@ fn match_one(
     let mut best: Option<(usize, f32)> = None;
     for (idx, (lib_title, _)) in normalised_lib.iter().enumerate() {
         let s = token_sort_ratio(&key_title, lib_title);
-        if best.map_or(true, |(_, bs)| s > bs) {
+        if best.is_none_or(|(_, bs)| s > bs) {
             best = Some((idx, s));
         }
     }
@@ -169,10 +161,12 @@ fn levenshtein(a: &str, b: &str) -> usize {
     for i in 1..=m {
         curr[0] = i;
         for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -221,7 +215,10 @@ mod tests {
             artist: None,
         }];
         let res = match_all(&lib(), &inp);
-        assert!(matches!(res[0].status, MatchStatus::Exact | MatchStatus::Fuzzy));
+        assert!(matches!(
+            res[0].status,
+            MatchStatus::Exact | MatchStatus::Fuzzy
+        ));
         assert!(res[0].track.is_some());
     }
 

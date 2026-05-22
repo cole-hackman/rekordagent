@@ -572,7 +572,9 @@ pub struct Tag {
 
 impl CacheDb {
     pub fn list_tag_categories(&self) -> Result<Vec<TagCategory>> {
-        let mut stmt = self.conn.prepare("SELECT id, name, seq FROM tag_categories ORDER BY seq, name")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, seq FROM tag_categories ORDER BY seq, name")?;
         let rows = stmt.query_map([], |r| {
             Ok(TagCategory {
                 id: r.get(0)?,
@@ -580,17 +582,26 @@ impl CacheDb {
                 seq: r.get(2)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn create_tag_category(&self, name: &str) -> Result<TagCategory> {
         let id = uuid::Uuid::new_v4().to_string();
-        let seq: i64 = self.conn.query_row("SELECT COALESCE(MAX(seq), -1) + 1 FROM tag_categories", [], |r| r.get(0))?;
+        let seq: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), -1) + 1 FROM tag_categories",
+            [],
+            |r| r.get(0),
+        )?;
         self.conn.execute(
             "INSERT INTO tag_categories (id, name, seq) VALUES (?1, ?2, ?3)",
             rusqlite::params![id, name, seq],
         )?;
-        Ok(TagCategory { id, name: name.to_owned(), seq })
+        Ok(TagCategory {
+            id,
+            name: name.to_owned(),
+            seq,
+        })
     }
 
     pub fn rename_tag_category(&self, id: &str, name: &str) -> Result<()> {
@@ -602,7 +613,10 @@ impl CacheDb {
     }
 
     pub fn delete_tag_category(&self, id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM tag_categories WHERE id = ?1", rusqlite::params![id])?;
+        self.conn.execute(
+            "DELETE FROM tag_categories WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
         Ok(())
     }
 
@@ -620,7 +634,9 @@ impl CacheDb {
                 });
             }
         } else {
-            let mut stmt = self.conn.prepare("SELECT id, category_id, name, seq FROM tags ORDER BY category_id, seq, name")?;
+            let mut stmt = self.conn.prepare(
+                "SELECT id, category_id, name, seq FROM tags ORDER BY category_id, seq, name",
+            )?;
             let mut rows = stmt.query([])?;
             while let Some(r) = rows.next()? {
                 tags.push(Tag {
@@ -662,7 +678,8 @@ impl CacheDb {
     }
 
     pub fn delete_tag(&self, id: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM tags WHERE id = ?1", rusqlite::params![id])?;
+        self.conn
+            .execute("DELETE FROM tags WHERE id = ?1", rusqlite::params![id])?;
         Ok(())
     }
 
@@ -695,24 +712,32 @@ impl CacheDb {
                 seq: r.get(3)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
-    pub fn set_track_tags(&self, library_path: &str, track_id: &str, tag_ids: &[String]) -> Result<()> {
+    pub fn set_track_tags(
+        &self,
+        library_path: &str,
+        track_id: &str,
+        tag_ids: &[String],
+    ) -> Result<()> {
         self.conn.execute("BEGIN IMMEDIATE", [])?;
         let res: Result<(), rusqlite::Error> = (|| {
             self.conn.execute(
                 "DELETE FROM track_tags WHERE library_path = ?1 AND track_id = ?2",
                 rusqlite::params![library_path, track_id],
             )?;
-            
-            let mut stmt = self.conn.prepare("INSERT INTO track_tags (library_path, track_id, tag_id) VALUES (?1, ?2, ?3)")?;
+
+            let mut stmt = self.conn.prepare(
+                "INSERT INTO track_tags (library_path, track_id, tag_id) VALUES (?1, ?2, ?3)",
+            )?;
             for tag_id in tag_ids {
                 stmt.execute(rusqlite::params![library_path, track_id, tag_id])?;
             }
             Ok(())
         })();
-        
+
         if res.is_ok() {
             self.conn.execute("COMMIT", [])?;
         } else {
@@ -738,13 +763,18 @@ impl CacheDb {
         Ok(())
     }
 
-    pub fn search_tracks_by_tags(&self, library_path: &str, tag_ids: &[String], match_all: bool) -> Result<Vec<String>> {
+    pub fn search_tracks_by_tags(
+        &self,
+        library_path: &str,
+        tag_ids: &[String],
+        match_all: bool,
+    ) -> Result<Vec<String>> {
         if tag_ids.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         let in_clause = tag_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        
+
         let sql = if match_all {
             format!(
                 "SELECT track_id FROM track_tags 
@@ -760,7 +790,7 @@ impl CacheDb {
                 in_clause
             )
         };
-        
+
         let mut params: Vec<&dyn rusqlite::ToSql> = vec![&library_path];
         for id in tag_ids {
             params.push(id);
@@ -769,10 +799,13 @@ impl CacheDb {
         if match_all {
             params.push(&count);
         }
-        
+
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(params), |r| r.get::<_, String>(0))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(rusqlite::params_from_iter(params), |r| {
+            r.get::<_, String>(0)
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     // ── Incoming / Archive ──────────────────────────────────────────────────
@@ -805,9 +838,9 @@ impl CacheDb {
         let mut stmt = self
             .conn
             .prepare_cached("SELECT track_id FROM archived_tracks WHERE library_path = ?1")?;
-        let rows = stmt
-            .query_map(rusqlite::params![library_path], |r| r.get::<_, String>(0))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        let rows = stmt.query_map(rusqlite::params![library_path], |r| r.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn archive_tracks(&self, library_path: &str, track_ids: &[String]) -> Result<()> {
@@ -832,7 +865,8 @@ impl CacheDb {
             .conn
             .prepare_cached("SELECT pattern FROM common_text_blocklist ORDER BY id ASC")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn add_common_text_pattern(&self, pattern: &str) -> Result<()> {

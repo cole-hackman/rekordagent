@@ -3,7 +3,11 @@ use crate::{FixProposal, TrackView};
 /// Target: Artist empty AND Title contains exactly one ` - ` (or `:`),
 /// AND the left part is plausibly an artist (not e.g. "01" or "Vol. 5").
 pub fn propose(track: &TrackView) -> Vec<FixProposal> {
-    if track.artist.as_deref().is_some_and(|a| !a.trim().is_empty()) {
+    if track
+        .artist
+        .as_deref()
+        .is_some_and(|a| !a.trim().is_empty())
+    {
         return Vec::new();
     }
     let title = match track.title.as_deref() {

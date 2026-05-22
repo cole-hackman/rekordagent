@@ -39,7 +39,9 @@ const TRACK = {
   dj_play_count: null,
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function render_() {
   return render(

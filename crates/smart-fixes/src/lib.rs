@@ -102,11 +102,7 @@ pub const ALL_FIXES: &[&str] = &[
     "remove_common_text",
 ];
 
-pub fn propose(
-    fix_name: &str,
-    track: &TrackView,
-    config: &FixConfig,
-) -> Vec<FixProposal> {
+pub fn propose(fix_name: &str, track: &TrackView, config: &FixConfig) -> Vec<FixProposal> {
     match fix_name {
         "fix_casing" => fixes::casing::propose(track),
         "replace_with_space" => fixes::replace_with_space::propose(track, config),

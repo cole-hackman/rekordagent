@@ -15,7 +15,9 @@ pub(super) fn apply_create(tx: &Transaction, change: &StagedChange) -> anyhow::R
         .new_value
         .as_ref()
         .ok_or_else(|| anyhow!("Missing new_value"))?;
-    let obj = new.as_object().ok_or_else(|| anyhow!("new_value must be object"))?;
+    let obj = new
+        .as_object()
+        .ok_or_else(|| anyhow!("new_value must be object"))?;
 
     let name = obj
         .get("name")
@@ -91,7 +93,9 @@ pub(super) fn apply_add_track(tx: &Transaction, change: &StagedChange) -> anyhow
         .new_value
         .as_ref()
         .ok_or_else(|| anyhow!("Missing new_value"))?;
-    let obj = new.as_object().ok_or_else(|| anyhow!("new_value must be object"))?;
+    let obj = new
+        .as_object()
+        .ok_or_else(|| anyhow!("new_value must be object"))?;
     let content_id = obj
         .get("content_id")
         .and_then(Value::as_str)
@@ -132,7 +136,9 @@ pub(super) fn apply_remove_track(tx: &Transaction, change: &StagedChange) -> any
         .new_value
         .as_ref()
         .ok_or_else(|| anyhow!("Missing new_value"))?;
-    let obj = new.as_object().ok_or_else(|| anyhow!("new_value must be object"))?;
+    let obj = new
+        .as_object()
+        .ok_or_else(|| anyhow!("new_value must be object"))?;
     let content_id = obj
         .get("content_id")
         .and_then(Value::as_str)
@@ -168,7 +174,9 @@ pub(super) fn apply_reorder(tx: &Transaction, change: &StagedChange) -> anyhow::
         .new_value
         .as_ref()
         .ok_or_else(|| anyhow!("Missing new_value"))?;
-    let obj = new.as_object().ok_or_else(|| anyhow!("new_value must be object"))?;
+    let obj = new
+        .as_object()
+        .ok_or_else(|| anyhow!("new_value must be object"))?;
     let order = obj
         .get("order")
         .and_then(Value::as_array)
@@ -258,11 +266,9 @@ mod tests {
         assert_eq!(name, "Set 1 (final)");
         apply_delete(&tx, &ch(ChangeKind::PlaylistDelete, "p1", Value::Null)).unwrap();
         let n: i64 = tx
-            .query_row(
-                "SELECT COUNT(*) FROM djmdPlaylist WHERE ID='p1'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM djmdPlaylist WHERE ID='p1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(n, 0);
     }
@@ -271,11 +277,8 @@ mod tests {
     fn add_track_assigns_next_track_no() {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
-        tx.execute(
-            "INSERT INTO djmdPlaylist (ID, Name) VALUES ('p1', 'x')",
-            [],
-        )
-        .unwrap();
+        tx.execute("INSERT INTO djmdPlaylist (ID, Name) VALUES ('p1', 'x')", [])
+            .unwrap();
         apply_add_track(
             &tx,
             &ch(
@@ -365,11 +368,7 @@ mod tests {
             .collect();
         assert_eq!(
             rows,
-            vec![
-                ("t3".into(), 1),
-                ("t1".into(), 2),
-                ("t2".into(), 3),
-            ]
+            vec![("t3".into(), 1), ("t1".into(), 2), ("t2".into(), 3),]
         );
     }
 

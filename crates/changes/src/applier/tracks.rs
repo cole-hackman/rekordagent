@@ -140,7 +140,10 @@ pub(super) fn get_or_create_fk(
     name_col: &str,
     value: &str,
 ) -> anyhow::Result<String> {
-    let sql_select = format!("SELECT ID FROM {} WHERE {} = ? COLLATE NOCASE", table, name_col);
+    let sql_select = format!(
+        "SELECT ID FROM {} WHERE {} = ? COLLATE NOCASE",
+        table, name_col
+    );
     if let Ok(id) = tx.query_row(&sql_select, params![value], |r| r.get::<_, String>(0)) {
         return Ok(id);
     }
@@ -191,7 +194,9 @@ mod tests {
         let tx = conn.transaction().unwrap();
         apply_metadata_edit(&tx, &change("Title", Value::String("New".into()))).unwrap();
         let t: String = tx
-            .query_row("SELECT Title FROM djmdContent WHERE ID='t1'", [], |r| r.get(0))
+            .query_row("SELECT Title FROM djmdContent WHERE ID='t1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(t, "New");
     }
@@ -202,11 +207,9 @@ mod tests {
         let tx = conn.transaction().unwrap();
         apply_metadata_edit(&tx, &change("Genre", Value::String("Deep House".into()))).unwrap();
         let genre_id: String = tx
-            .query_row(
-                "SELECT GenreID FROM djmdContent WHERE ID='t1'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT GenreID FROM djmdContent WHERE ID='t1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         let name: String = tx
             .query_row(
@@ -225,11 +228,9 @@ mod tests {
         apply_metadata_edit(&tx, &change("Genre", Value::String("House".into()))).unwrap();
         apply_metadata_edit(&tx, &change("Genre", Value::Null)).unwrap();
         let g: Option<String> = tx
-            .query_row(
-                "SELECT GenreID FROM djmdContent WHERE ID='t1'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT GenreID FROM djmdContent WHERE ID='t1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert!(g.is_none());
     }
@@ -266,10 +267,7 @@ mod tests {
     fn disallowed_field_errors() {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
-        let res = apply_metadata_edit(
-            &tx,
-            &change("rb_local_deleted", Value::Number(1.into())),
-        );
+        let res = apply_metadata_edit(&tx, &change("rb_local_deleted", Value::Number(1.into())));
         assert!(res.is_err());
     }
 }

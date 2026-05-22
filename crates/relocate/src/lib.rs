@@ -297,9 +297,7 @@ mod tests {
         assert!(cand.matches[0]
             .reasons
             .contains(&"fuzzy_filename".to_string()));
-        assert!(cand.matches[0]
-            .reasons
-            .contains(&"parent_dir".to_string()));
+        assert!(cand.matches[0].reasons.contains(&"parent_dir".to_string()));
     }
 
     #[test]

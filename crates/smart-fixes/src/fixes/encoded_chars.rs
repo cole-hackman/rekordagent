@@ -28,7 +28,10 @@ pub fn propose(track: &TrackView) -> Vec<FixProposal> {
         &["Title", "Artist", "Album", "Commnt"],
         |field, val| {
             let mut new = val.to_string();
-            for (from, to) in HTML_ENTITY_REPLACEMENTS.iter().chain(MOJIBAKE_REPLACEMENTS.iter()) {
+            for (from, to) in HTML_ENTITY_REPLACEMENTS
+                .iter()
+                .chain(MOJIBAKE_REPLACEMENTS.iter())
+            {
                 if new.contains(from) {
                     new = new.replace(from, to);
                 }

@@ -735,7 +735,11 @@ mod tests {
             .expect("orphans");
         let arr = value.as_array().expect("array");
         // Seed has 3 live tracks all with /music/*.mp3 paths that don't exist on disk.
-        assert!(arr.len() >= 3, "expected at least 3 orphans, got {}", arr.len());
+        assert!(
+            arr.len() >= 3,
+            "expected at least 3 orphans, got {}",
+            arr.len()
+        );
     }
 
     #[test]
@@ -808,6 +812,9 @@ mod tests {
                     .map(|m| !m.is_empty())
                     .unwrap_or(false)
         });
-        assert!(found, "expected a relocate candidate for track 1; got {value}");
+        assert!(
+            found,
+            "expected a relocate candidate for track 1; got {value}"
+        );
     }
 }

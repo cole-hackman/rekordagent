@@ -18,7 +18,9 @@ pub(super) fn apply_add_cue(tx: &Transaction, change: &StagedChange) -> anyhow::
         .new_value
         .as_ref()
         .ok_or_else(|| anyhow!("Missing new_value"))?;
-    let obj = new.as_object().ok_or_else(|| anyhow!("new_value must be an object"))?;
+    let obj = new
+        .as_object()
+        .ok_or_else(|| anyhow!("new_value must be an object"))?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let in_msec = obj
@@ -85,7 +87,12 @@ mod tests {
         conn
     }
 
-    fn change(kind: ChangeKind, target: Option<&str>, field: Option<&str>, val: Value) -> StagedChange {
+    fn change(
+        kind: ChangeKind,
+        target: Option<&str>,
+        field: Option<&str>,
+        val: Value,
+    ) -> StagedChange {
         StagedChange {
             id: "c".into(),
             library_path: None,

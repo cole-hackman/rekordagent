@@ -107,7 +107,8 @@ pub fn list_genres(conn: &Connection) -> Result<Vec<GenreCount>> {
             count: row.get(1)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn list_artists(conn: &Connection) -> Result<Vec<ArtistCount>> {
@@ -126,21 +127,24 @@ pub fn list_artists(conn: &Connection) -> Result<Vec<ArtistCount>> {
             count: row.get(1)?,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn by_genre(conn: &Connection, genre: &str) -> Result<Vec<Track>> {
     let sql = format!("{SELECT} AND g.Name = ?1 ORDER BY a.Name, c.Title");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![genre], row_to_track)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 pub fn by_artist(conn: &Connection, artist: &str) -> Result<Vec<Track>> {
     let sql = format!("{SELECT} AND a.Name = ?1 ORDER BY a.Name, c.Title");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![artist], row_to_track)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 /// Tracks whose `DateCreated` is strictly greater than the given ISO 8601
@@ -150,12 +154,11 @@ pub fn by_artist(conn: &Connection, artist: &str) -> Result<Vec<Track>> {
 /// DateCreated is compared lexicographically; ISO 8601 with consistent
 /// width orders correctly that way (and Rekordbox writes it that way).
 pub fn added_since(conn: &Connection, watermark_iso: &str) -> Result<Vec<Track>> {
-    let sql = format!(
-        "{SELECT} AND COALESCE(c.DateCreated, '') > ?1 ORDER BY c.DateCreated DESC"
-    );
+    let sql = format!("{SELECT} AND COALESCE(c.DateCreated, '') > ?1 ORDER BY c.DateCreated DESC");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![watermark_iso], row_to_track)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 /// Lookup by a set of IDs, used for the Archive sub-view.

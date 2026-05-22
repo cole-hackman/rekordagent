@@ -35,13 +35,7 @@ pub fn propose(track: &TrackView) -> Vec<FixProposal> {
             }
             let trimmed = collapsed.trim().to_string();
             if trimmed != val && !trimmed.is_empty() {
-                out.push(FixProposal::new(
-                    "remove_urls",
-                    track,
-                    field,
-                    val,
-                    &trimmed,
-                ));
+                out.push(FixProposal::new("remove_urls", track, field, val, &trimmed));
             }
         },
     );
@@ -55,10 +49,18 @@ mod tests {
     fn tv(field: &str, v: &str) -> TrackView {
         TrackView {
             id: "t".into(),
-            title: if field == "Title" { Some(v.into()) } else { None },
+            title: if field == "Title" {
+                Some(v.into())
+            } else {
+                None
+            },
             artist: None,
             album: None,
-            comment: if field == "Commnt" { Some(v.into()) } else { None },
+            comment: if field == "Commnt" {
+                Some(v.into())
+            } else {
+                None
+            },
         }
     }
 

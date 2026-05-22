@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn probe_lock_returns_false_when_no_wal() {
         let path = fresh_db_path();
-        assert_eq!(WriteGuard::probe_lock(&path).unwrap(), false);
+        assert!(!WriteGuard::probe_lock(&path).unwrap());
     }
 
     #[test]
@@ -159,7 +159,7 @@ mod tests {
         let path = fresh_db_path();
         let wal = WriteGuard::wal_path_for(&path);
         fs::write(&wal, b"not empty").unwrap();
-        assert_eq!(WriteGuard::probe_lock(&path).unwrap(), true);
+        assert!(WriteGuard::probe_lock(&path).unwrap());
         fs::remove_file(&wal).ok();
     }
 

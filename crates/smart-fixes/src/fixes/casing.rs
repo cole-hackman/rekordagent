@@ -8,9 +8,15 @@ pub fn propose(track: &TrackView) -> Vec<FixProposal> {
     let mut out = Vec::new();
     super::for_each_text_field(track, &["Title", "Artist", "Album"], |field, val| {
         let all_caps = val.chars().any(|c| c.is_alphabetic())
-            && val.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase());
+            && val
+                .chars()
+                .filter(|c| c.is_alphabetic())
+                .all(|c| c.is_uppercase());
         let all_lower = val.chars().any(|c| c.is_alphabetic())
-            && val.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_lowercase());
+            && val
+                .chars()
+                .filter(|c| c.is_alphabetic())
+                .all(|c| c.is_lowercase());
         if !all_caps && !all_lower {
             return;
         }

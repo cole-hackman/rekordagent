@@ -2,12 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncPanel } from "./SyncPanel";
-import {
-  listPlaylists,
-  syncCheck,
-  syncExecute,
-  syncPreview,
-} from "../ipc";
+import { syncCheck, syncExecute, syncPreview } from "../ipc";
 import { WithProviders } from "../test-utils/providers";
 
 vi.mock("../ipc", () => ({
@@ -29,7 +24,9 @@ const ROW = {
   updated_at: 1,
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function render_() {
   return render(

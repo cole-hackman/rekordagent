@@ -10,7 +10,8 @@ use std::path::Path;
 /// Shared passphrase for every Rekordbox 6/7 database.
 /// Derived by reverse-engineering the Rekordbox application; publicly documented
 /// in pyrekordbox and reklawdbox.
-pub(crate) const RB_SQLCIPHER_KEY: &str = "402fd482c38817c35ffa8ffb8c7d93143b749e7d315df7a81732a1ff43608497";
+pub(crate) const RB_SQLCIPHER_KEY: &str =
+    "402fd482c38817c35ffa8ffb8c7d93143b749e7d315df7a81732a1ff43608497";
 
 /// Read-only handle to a Rekordbox `master.db`.
 pub struct RekordboxDb {

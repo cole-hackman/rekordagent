@@ -20,7 +20,12 @@ const PROMO_PATTERNS: &[&str] = &[
 
 fn compiled() -> &'static Vec<Regex> {
     static R: OnceLock<Vec<Regex>> = OnceLock::new();
-    R.get_or_init(|| PROMO_PATTERNS.iter().map(|p| Regex::new(p).unwrap()).collect())
+    R.get_or_init(|| {
+        PROMO_PATTERNS
+            .iter()
+            .map(|p| Regex::new(p).unwrap())
+            .collect()
+    })
 }
 
 pub fn propose(track: &TrackView) -> Vec<FixProposal> {
@@ -35,14 +40,15 @@ pub fn propose(track: &TrackView) -> Vec<FixProposal> {
                 new = re.replace_all(&new, "").to_string();
             }
             // strip empty brackets/parens left behind
-            new = new
-                .replace("()", "")
-                .replace("[]", "")
-                .replace("{}", "");
+            new = new.replace("()", "").replace("[]", "").replace("{}", "");
             while new.contains("  ") {
                 new = new.replace("  ", " ");
             }
-            let trimmed = new.trim().trim_end_matches(['-', '–', '—', ' ']).trim().to_string();
+            let trimmed = new
+                .trim()
+                .trim_end_matches(['-', '–', '—', ' '])
+                .trim()
+                .to_string();
             if trimmed != val && !trimmed.is_empty() {
                 out.push(FixProposal::new(
                     "remove_promo",
