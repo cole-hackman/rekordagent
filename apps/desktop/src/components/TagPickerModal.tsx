@@ -82,13 +82,13 @@ export function TagPickerModal({ libraryPath, selectedTrackIds, tagsByTrack, onC
     // If all have it, remove from all. Otherwise, add to all.
     const adding = !isAll;
     
-    for (const tid of trackIds) {
-      if (adding) {
-        await addTrackTag(libraryPath, tid, tagId);
-      } else {
-        await removeTrackTag(libraryPath, tid, tagId);
-      }
-    }
+    await Promise.all(
+      trackIds.map(tid =>
+        adding
+          ? addTrackTag(libraryPath, tid, tagId)
+          : removeTrackTag(libraryPath, tid, tagId)
+      )
+    );
 
     await queryClient.invalidateQueries({ queryKey: ["track-tags-map", libraryPath] });
 
