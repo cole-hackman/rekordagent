@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import { useState } from "react";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { TagPickerModal } from "../components/TagPickerModal";
+import { WithProviders } from "../test-utils/providers";
 
 // `<dialog>` is implemented in jsdom but `showModal`/`close` are stubs that
 // throw — patch them so the picker mounts cleanly.
@@ -18,7 +19,6 @@ beforeAll(() => {
 vi.mock("../ipc", () => ({
   listTagCategories: vi.fn().mockResolvedValue([]),
   listTags: vi.fn().mockResolvedValue([]),
-  getTrackTags: vi.fn().mockResolvedValue([]),
   addTrackTag: vi.fn(),
   removeTrackTag: vi.fn(),
 }));
@@ -43,6 +43,7 @@ function Harness({ selectedTrackIds }: { selectedTrackIds: Set<string> }) {
     <TagPickerModal
       libraryPath="/library/master.db"
       selectedTrackIds={pickerIds}
+      tagsByTrack={new Map()}
       onClose={() => setPickerIds(null)}
     />
   ) : null;
@@ -56,7 +57,11 @@ function dispatchKey(key: string, target: EventTarget = document.body) {
 
 describe("T-key mounts the tag picker", () => {
   it("opens the TagPickerModal when a track is selected", async () => {
-    render(<Harness selectedTrackIds={new Set(["track-1"])} />);
+    render(
+      <WithProviders>
+        <Harness selectedTrackIds={new Set(["track-1"])} />
+      </WithProviders>,
+    );
 
     expect(screen.queryByText(/Assign Tags/i)).toBeNull();
 
@@ -66,7 +71,11 @@ describe("T-key mounts the tag picker", () => {
   });
 
   it("does nothing when no track is selected", () => {
-    render(<Harness selectedTrackIds={new Set()} />);
+    render(
+      <WithProviders>
+        <Harness selectedTrackIds={new Set()} />
+      </WithProviders>,
+    );
 
     act(() => dispatchKey("t"));
 

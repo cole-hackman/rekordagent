@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   listTagCategories,
   listTags,
-  getTrackTags,
   addTrackTag,
   removeTrackTag,
 } from "../ipc";
@@ -11,13 +11,15 @@ import type { TagCategory, Tag } from "../types";
 interface Props {
   libraryPath: string;
   selectedTrackIds: Set<string>;
+  tagsByTrack: Map<string, Set<string>>;
   onClose: () => void;
 }
 
-export function TagPickerModal({ libraryPath, selectedTrackIds, onClose }: Props) {
+export function TagPickerModal({ libraryPath, selectedTrackIds, tagsByTrack, onClose }: Props) {
+  const queryClient = useQueryClient();
   const [categories, setCategories] = useState<TagCategory[]>([]);
   const [tags, setTags] = useState<Record<string, Tag[]>>({});
-  
+
   // Maps tagId to how many selected tracks have this tag
   const [tagCounts, setTagCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -50,9 +52,10 @@ export function TagPickerModal({ libraryPath, selectedTrackIds, onClose }: Props
 
         const counts: Record<string, number> = {};
         for (const tid of selectedTrackIds) {
-          const trackTags = await getTrackTags(libraryPath, tid);
-          for (const tt of trackTags) {
-            counts[tt.id] = (counts[tt.id] || 0) + 1;
+          const bound = tagsByTrack.get(tid);
+          if (!bound) continue;
+          for (const tagId of bound) {
+            counts[tagId] = (counts[tagId] || 0) + 1;
           }
         }
 
@@ -69,7 +72,7 @@ export function TagPickerModal({ libraryPath, selectedTrackIds, onClose }: Props
     }
     load();
     return () => { mounted = false; };
-  }, [libraryPath, selectedTrackIds]);
+  }, [libraryPath, selectedTrackIds, tagsByTrack]);
 
   const toggleTag = async (tagId: string) => {
     const trackIds = Array.from(selectedTrackIds);
@@ -86,7 +89,9 @@ export function TagPickerModal({ libraryPath, selectedTrackIds, onClose }: Props
         await removeTrackTag(libraryPath, tid, tagId);
       }
     }
-    
+
+    await queryClient.invalidateQueries({ queryKey: ["track-tags-map", libraryPath] });
+
     setTagCounts(prev => ({
       ...prev,
       [tagId]: adding ? trackIds.length : 0

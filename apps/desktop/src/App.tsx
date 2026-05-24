@@ -584,6 +584,7 @@ export default function App() {
         <TagPickerModal
           libraryPath={libraryPath}
           selectedTrackIds={tagPickerTrackIds}
+          tagsByTrack={filterCtx.tagsByTrack}
           onClose={() => setTagPickerTrackIds(null)}
         />
       )}
