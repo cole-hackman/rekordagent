@@ -139,6 +139,10 @@ export function CustomTagsPanel({ onShowTracks }: Props = {}) {
                       {catTags.length === 0 ? (
                         <div className="text-xs text-ink-faint">No tags.</div>
                       ) : (
+                        // NOTE: drag-to-move tag chips between categories (and
+                        // within-category reorder) is deferred — the backend
+                        // `move_tag` IPC exists, but reorder still needs a new
+                        // `reorder_tags` command before we wire @dnd-kit.
                         <div className="flex flex-wrap gap-2">
                           {catTags.map((tag) => {
                             const selected = selectedTagIds.has(tag.id);

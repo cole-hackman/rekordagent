@@ -570,9 +570,10 @@ pub struct Tag {
     pub seq: i64,
     /// Number of `track_tags` rows pointing at this tag, summed across every
     /// library. Used by the UI to render a "(7)" usage badge without an extra
-    /// round-trip per tag.
+    /// round-trip per tag. `u32` is safe — `COUNT(*)` for tag membership can
+    /// never exceed total library track count, which fits comfortably.
     #[serde(default)]
-    pub usage_count: i64,
+    pub usage_count: u32,
 }
 
 impl CacheDb {
@@ -642,7 +643,7 @@ impl CacheDb {
                     category_id: r.get(1)?,
                     name: r.get(2)?,
                     seq: r.get(3)?,
-                    usage_count: r.get(4)?,
+                    usage_count: r.get::<_, u32>(4)?,
                 });
             }
         } else {
@@ -655,7 +656,7 @@ impl CacheDb {
                     category_id: r.get(1)?,
                     name: r.get(2)?,
                     seq: r.get(3)?,
-                    usage_count: r.get(4)?,
+                    usage_count: r.get::<_, u32>(4)?,
                 });
             }
         }
@@ -724,7 +725,7 @@ impl CacheDb {
                 category_id: r.get(1)?,
                 name: r.get(2)?,
                 seq: r.get(3)?,
-                usage_count: r.get(4)?,
+                usage_count: r.get::<_, u32>(4)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
