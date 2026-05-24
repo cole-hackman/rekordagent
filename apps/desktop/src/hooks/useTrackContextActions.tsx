@@ -20,6 +20,8 @@ interface Options {
   /** When the menu was opened from a playlist row, the playlist id of the
    *  parent playlist. Unlocks the "Remove from playlist" action. */
   playlistId?: string;
+  /** Opens the tag picker for the right-clicked track. */
+  onEditTags?: (track: Track) => void;
 }
 
 /** Builds the right-click action set for a Track. Memoised so the menu
@@ -28,6 +30,7 @@ export function useTrackContextActions({
   libraryPath,
   onShowDetails,
   playlistId,
+  onEditTags,
 }: Options): TrackContextMenuAction[] {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -203,6 +206,21 @@ export function useTrackContextActions({
         ),
         onSelect: doAnalyze,
       },
+      ...(onEditTags
+        ? [
+            {
+              id: "edit-tags",
+              label: "Edit tags…",
+              hint: "T",
+              icon: (
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                  <path d="M2 3a1 1 0 011-1h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 010 1.414l-5.586 5.586a1 1 0 01-1.414 0L2.293 9.293A1 1 0 012 8.586V3zm3 2a1 1 0 100 2 1 1 0 000-2z" />
+                </svg>
+              ),
+              onSelect: (track: Track) => onEditTags(track),
+            } as TrackContextMenuAction,
+          ]
+        : []),
       {
         id: "stage-intro-cue",
         label: "Stage intro cue",
@@ -274,5 +292,6 @@ export function useTrackContextActions({
     doCopyId,
     doRemoveFromPlaylist,
     playlistId,
+    onEditTags,
   ]);
 }

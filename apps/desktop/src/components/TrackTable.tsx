@@ -17,7 +17,6 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { EmptyState } from "./EmptyState";
 import { ErrorPanel } from "./ErrorPanel";
 import { applyFilters, type FilterContext, type Filters } from "../lib/filters";
-import { TagPickerModal } from "./TagPickerModal";
 import type { Track } from "../types";
 
 const ROW_H = 28;
@@ -118,7 +117,6 @@ export function TrackTable({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [showColumnFilters, setShowColumnFilters] = useState(false);
-  const [showTagPicker, setShowTagPicker] = useState(false);
   const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
   const [isAddingCues, setIsAddingCues] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -459,13 +457,6 @@ export function TrackTable({
         </div>
       )}
 
-      {showTagPicker && (
-        <TagPickerModal
-          libraryPath={libraryPath}
-          selectedTrackIds={selectedTrackIds}
-          onClose={() => setShowTagPicker(false)}
-        />
-      )}
     </div>
   );
 }

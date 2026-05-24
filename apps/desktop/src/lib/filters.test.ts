@@ -37,6 +37,7 @@ const CTX: FilterContext = {
   tracksWithCues: new Set(),
   tracksInAnyPlaylist: new Set(),
   tracksWithMissingFiles: new Set(),
+  tagsByTrack: new Map(),
 };
 
 describe("applyFilters", () => {
@@ -82,13 +83,13 @@ describe("applyFilters", () => {
   });
 
   it("hasCues: yes / no uses the context set", () => {
-    const ctx: FilterContext = { tracksWithCues: new Set(["1", "4"]), tracksInAnyPlaylist: new Set(), tracksWithMissingFiles: new Set() };
+    const ctx: FilterContext = { tracksWithCues: new Set(["1", "4"]), tracksInAnyPlaylist: new Set(), tracksWithMissingFiles: new Set(), tagsByTrack: new Map() };
     expect(applyFilters(tracks, { ...EMPTY_FILTERS, hasCues: "yes" }, ctx).map((t) => t.id)).toEqual(["1", "4"]);
     expect(applyFilters(tracks, { ...EMPTY_FILTERS, hasCues: "no" }, ctx).map((t) => t.id)).toEqual(["2", "3"]);
   });
 
   it("notInAnyPlaylist hides tracks present in the membership set", () => {
-    const ctx: FilterContext = { tracksWithCues: new Set(), tracksInAnyPlaylist: new Set(["2", "3"]), tracksWithMissingFiles: new Set() };
+    const ctx: FilterContext = { tracksWithCues: new Set(), tracksInAnyPlaylist: new Set(["2", "3"]), tracksWithMissingFiles: new Set(), tagsByTrack: new Map() };
     expect(applyFilters(tracks, { ...EMPTY_FILTERS, notInAnyPlaylist: true }, ctx).map((t) => t.id)).toEqual(["1", "4"]);
   });
 
@@ -97,6 +98,7 @@ describe("applyFilters", () => {
       tracksWithCues: new Set(),
       tracksInAnyPlaylist: new Set(),
       tracksWithMissingFiles: new Set(["3"]),
+      tagsByTrack: new Map(),
     };
     expect(
       applyFilters(tracks, { ...EMPTY_FILTERS, missingFiles: true }, ctx).map(
@@ -117,6 +119,70 @@ describe("applyFilters", () => {
   it("treats bpm 0 as missing", () => {
     const out = applyFilters(tracks, { ...EMPTY_FILTERS, missing: ["bpm"] }, CTX);
     expect(out.map((t) => t.id)).toEqual(["3"]);
+  });
+
+  it("tagIds OR keeps tracks bound to any of the selected tags", () => {
+    const ctx: FilterContext = {
+      tracksWithCues: new Set(),
+      tracksInAnyPlaylist: new Set(),
+      tracksWithMissingFiles: new Set(),
+      tagsByTrack: new Map([
+        ["1", new Set(["chill"])],
+        ["2", new Set(["hype"])],
+        ["4", new Set(["chill", "hype"])],
+      ]),
+    };
+    const out = applyFilters(
+      tracks,
+      { ...EMPTY_FILTERS, tagIds: ["chill", "hype"], tagMatchAll: false },
+      ctx,
+    );
+    expect(out.map((t) => t.id).sort()).toEqual(["1", "2", "4"]);
+  });
+
+  it("tagIds AND requires every selected tag to be present", () => {
+    const ctx: FilterContext = {
+      tracksWithCues: new Set(),
+      tracksInAnyPlaylist: new Set(),
+      tracksWithMissingFiles: new Set(),
+      tagsByTrack: new Map([
+        ["1", new Set(["chill"])],
+        ["2", new Set(["hype"])],
+        ["4", new Set(["chill", "hype"])],
+      ]),
+    };
+    const out = applyFilters(
+      tracks,
+      { ...EMPTY_FILTERS, tagIds: ["chill", "hype"], tagMatchAll: true },
+      ctx,
+    );
+    expect(out.map((t) => t.id)).toEqual(["4"]);
+  });
+
+  it("empty tagIds is a no-op", () => {
+    const ctx: FilterContext = {
+      tracksWithCues: new Set(),
+      tracksInAnyPlaylist: new Set(),
+      tracksWithMissingFiles: new Set(),
+      tagsByTrack: new Map([["1", new Set(["chill"])]]),
+    };
+    const out = applyFilters(tracks, { ...EMPTY_FILTERS, tagIds: [] }, ctx);
+    expect(out).toHaveLength(4);
+  });
+
+  it("tagIds filter excludes tracks with no tag bindings", () => {
+    const ctx: FilterContext = {
+      tracksWithCues: new Set(),
+      tracksInAnyPlaylist: new Set(),
+      tracksWithMissingFiles: new Set(),
+      tagsByTrack: new Map([["1", new Set(["chill"])]]),
+    };
+    const out = applyFilters(
+      tracks,
+      { ...EMPTY_FILTERS, tagIds: ["chill"] },
+      ctx,
+    );
+    expect(out.map((t) => t.id)).toEqual(["1"]);
   });
 });
 
@@ -141,6 +207,12 @@ describe("activeFilterCount", () => {
       }),
     ).toBe(4);
   });
+
+  it("counts tagIds as a single active filter", () => {
+    expect(
+      activeFilterCount({ ...EMPTY_FILTERS, tagIds: ["a", "b"] }),
+    ).toBe(1);
+  });
 });
 
 describe("isInboxTrack", () => {
@@ -157,6 +229,7 @@ describe("isInboxTrack", () => {
     tracksWithCues: new Set(["complete"]),
     tracksInAnyPlaylist: new Set(["complete"]),
     tracksWithMissingFiles: new Set(),
+    tagsByTrack: new Map(),
   };
 
   it("excludes complete tracks", () => {

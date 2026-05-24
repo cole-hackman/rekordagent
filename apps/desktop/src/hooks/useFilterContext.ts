@@ -4,6 +4,7 @@ import {
   listTracksWithCues,
   listTracksInAnyPlaylist,
   listTracksWithMissingFiles,
+  listTrackTagsMap,
 } from "../ipc";
 import type { FilterContext } from "../lib/filters";
 
@@ -44,13 +45,27 @@ export function useFilterContext(
     staleTime: Infinity,
   });
 
+  const tagBindings = useQuery<Record<string, string[]>, Error>({
+    queryKey: ["track-tags-map", libraryPath],
+    queryFn: () => listTrackTagsMap(libraryPath!),
+    enabled: libraryPath !== null,
+    staleTime: Infinity,
+  });
+
   const ctx = useMemo<FilterContext>(
     () => ({
       tracksWithCues: new Set(cues.data ?? []),
       tracksInAnyPlaylist: new Set(inPlaylist.data ?? []),
       tracksWithMissingFiles: new Set(missingFiles.data ?? []),
+      tagsByTrack: tagBindings.data
+        ? new Map(
+            Object.entries(tagBindings.data).map(
+              ([trackId, ids]) => [trackId, new Set(ids)],
+            ),
+          )
+        : new Map(),
     }),
-    [cues.data, inPlaylist.data, missingFiles.data],
+    [cues.data, inPlaylist.data, missingFiles.data, tagBindings.data],
   );
 
   return {

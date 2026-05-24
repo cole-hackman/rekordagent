@@ -72,6 +72,9 @@ export interface Tag {
   category_id: string;
   name: string;
   seq: number;
+  /** Number of track ↔ tag bindings across all libraries. Surfaced as a "(N)"
+   *  badge in the Custom Tags panel. */
+  usage_count: number;
 }
 
 /** Mirrors `audio_tags::TrackTags`. */

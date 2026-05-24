@@ -710,3 +710,7 @@ export async function searchTracksByTags(libraryPath: string, tagIds: string[], 
   return invoke<Track[]>("search_tracks_by_tags", { libraryPath, tagIds, matchAll });
 }
 
+export async function listTrackTagsMap(libraryPath: string): Promise<Record<string, string[]>> {
+  return invoke<Record<string, string[]>>("list_track_tags_map", { libraryPath });
+}
+

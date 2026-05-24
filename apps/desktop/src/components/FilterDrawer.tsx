@@ -7,6 +7,11 @@ import {
 } from "../lib/filters";
 import { MultiSelectDropdown } from "./ui/MultiSelectDropdown";
 
+export interface TagOption {
+  id: string;
+  label: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -15,6 +20,9 @@ interface Props {
   /** Distinct values from the loaded library for multi-selects. */
   availableKeys: string[];
   availableGenres: string[];
+  /** Custom tags available for the tag-filter multi-select.
+   *  Labels are pre-formatted (e.g. "Mood ▸ Chill"). */
+  availableTags?: TagOption[];
   /** Indicates that the on-disk missing-files scan is in flight. */
   missingFilesLoading?: boolean;
 }
@@ -47,6 +55,7 @@ export function FilterDrawer({
   onChange,
   availableKeys,
   availableGenres,
+  availableTags = [],
   missingFilesLoading = false,
 }: Props) {
   if (!open) return null;
@@ -67,6 +76,21 @@ export function FilterDrawer({
     set: (next: string[]) => void,
   ) => {
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  };
+
+  const tagLabelById = new Map(availableTags.map((t) => [t.id, t.label]));
+  const tagLabels = availableTags.map((t) => t.label);
+  const selectedTagLabels = filters.tagIds
+    .map((id) => tagLabelById.get(id))
+    .filter((l): l is string => l !== undefined);
+  const toggleTagByLabel = (label: string) => {
+    const opt = availableTags.find((t) => t.label === label);
+    if (!opt) return;
+    if (filters.tagIds.includes(opt.id)) {
+      patch({ tagIds: filters.tagIds.filter((id) => id !== opt.id) });
+    } else {
+      patch({ tagIds: [...filters.tagIds, opt.id] });
+    }
   };
 
   return (
@@ -163,6 +187,48 @@ export function FilterDrawer({
               }
               onClear={() => patch({ genres: [] })}
             />
+          </Section>
+        )}
+
+        {/* Custom tags */}
+        {availableTags.length > 0 && (
+          <Section label="Tags">
+            <MultiSelectDropdown
+              label="Tags"
+              options={tagLabels}
+              selected={selectedTagLabels}
+              onToggle={toggleTagByLabel}
+              onClear={() => patch({ tagIds: [] })}
+            />
+            {filters.tagIds.length > 1 && (
+              <div className="flex items-center gap-1.5 text-[11px] text-ink-secondary">
+                <span className="text-ink-muted">Match:</span>
+                <button
+                  type="button"
+                  onClick={() => patch({ tagMatchAll: false })}
+                  className={[
+                    "rounded border px-1.5 py-0.5 transition-colors",
+                    !filters.tagMatchAll
+                      ? "border-accent/60 bg-accent/10 text-accent-hover"
+                      : "border-edge hover:border-edge-strong",
+                  ].join(" ")}
+                >
+                  Any
+                </button>
+                <button
+                  type="button"
+                  onClick={() => patch({ tagMatchAll: true })}
+                  className={[
+                    "rounded border px-1.5 py-0.5 transition-colors",
+                    filters.tagMatchAll
+                      ? "border-accent/60 bg-accent/10 text-accent-hover"
+                      : "border-edge hover:border-edge-strong",
+                  ].join(" ")}
+                >
+                  All
+                </button>
+              </div>
+            )}
           </Section>
         )}
 

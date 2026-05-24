@@ -2362,6 +2362,20 @@ async fn remove_track_tag(
 }
 
 #[tauri::command]
+async fn list_track_tags_map(
+    app: tauri::AppHandle,
+    library_path: String,
+) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = cache_db(&app)?;
+        db.list_track_tags_map(&library_path)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn search_tracks_by_tags(
     app: tauri::AppHandle,
     library_path: String,
@@ -2501,6 +2515,7 @@ pub fn run() {
             add_track_tag,
             remove_track_tag,
             search_tracks_by_tags,
+            list_track_tags_map,
         ])
         .run(tauri::generate_context!())
         .expect("error while running decks");

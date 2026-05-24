@@ -13,6 +13,9 @@ vi.mock("./ipc", () => ({
   acceptAllSafe: vi.fn(),
   rejectAll: vi.fn(),
   exportAcceptedChanges: vi.fn(),
+  listTagCategories: vi.fn().mockResolvedValue([]),
+  listTags: vi.fn().mockResolvedValue([]),
+  listTrackTagsMap: vi.fn().mockResolvedValue({}),
 }));
 
 const mockState = {

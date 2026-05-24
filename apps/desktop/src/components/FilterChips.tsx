@@ -3,6 +3,10 @@ import type { Filters, MissingField } from "../lib/filters";
 interface Props {
   filters: Filters;
   onChange: (next: Filters) => void;
+  /** Map of tag-id → display label (e.g. "Mood ▸ Chill"). Optional; chips
+   *  fall back to the raw ID if a label isn't available (the tag may have
+   *  been deleted out from under a persisted filter). */
+  tagLabelById?: Record<string, string>;
 }
 
 interface Chip {
@@ -10,7 +14,7 @@ interface Chip {
   clear: () => void;
 }
 
-export function FilterChips({ filters, onChange }: Props) {
+export function FilterChips({ filters, onChange, tagLabelById = {} }: Props) {
   const chips: Chip[] = [];
 
   if (filters.bpmMin !== null || filters.bpmMax !== null) {
@@ -72,6 +76,23 @@ export function FilterChips({ filters, onChange }: Props) {
     chips.push({
       label: "Missing files",
       clear: () => onChange({ ...filters, missingFiles: false }),
+    });
+  }
+  for (const tagId of filters.tagIds) {
+    const label = tagLabelById[tagId] ?? tagId;
+    chips.push({
+      label: `Tag ${label}`,
+      clear: () =>
+        onChange({
+          ...filters,
+          tagIds: filters.tagIds.filter((id) => id !== tagId),
+        }),
+    });
+  }
+  if (filters.tagIds.length > 1) {
+    chips.push({
+      label: filters.tagMatchAll ? "Tags: all" : "Tags: any",
+      clear: () => onChange({ ...filters, tagMatchAll: false }),
     });
   }
   if (filters.commentContains.trim().length > 0) {

@@ -30,6 +30,7 @@ import { useFilterContext } from "./hooks/useFilterContext";
 import { useLibrary } from "./hooks/useLibrary";
 import { useTrackContextActions } from "./hooks/useTrackContextActions";
 import { TrackContextMenu } from "./components/TrackContextMenu";
+import { TagPickerModal } from "./components/TagPickerModal";
 import {
   activeFilterCount,
   distinctValues,
@@ -37,7 +38,14 @@ import {
   persistFilters,
   type Filters,
 } from "./lib/filters";
-import { getLibraryPath, validateLibraryPath, getTheme } from "./ipc";
+import {
+  getLibraryPath,
+  validateLibraryPath,
+  getTheme,
+  listTagCategories,
+  listTags,
+} from "./ipc";
+import { useQuery } from "@tanstack/react-query";
 import type { Track } from "./types";
 
 const IS_MAC =
@@ -68,6 +76,9 @@ export default function App() {
     anchor: { x: number; y: number };
     playlistId?: string;
   } | null>(null);
+  const [tagPickerTrackIds, setTagPickerTrackIds] = useState<Set<string> | null>(
+    null,
+  );
 
   const { data: tracks = [] } = useLibrary(libraryPath);
   const { ctx: filterCtx, missingFilesLoading } = useFilterContext(
@@ -82,6 +93,30 @@ export default function App() {
     () => distinctValues(tracks, (t) => t.genre),
     [tracks],
   );
+  const tagCategoriesQuery = useQuery({
+    queryKey: ["tag-categories"],
+    queryFn: listTagCategories,
+    staleTime: Infinity,
+  });
+  const allTagsQuery = useQuery({
+    queryKey: ["all-tags"],
+    queryFn: () => listTags(),
+    staleTime: Infinity,
+  });
+
+  const { availableTags, tagLabelById } = useMemo(() => {
+    const cats = tagCategoriesQuery.data ?? [];
+    const tags = allTagsQuery.data ?? [];
+    const catName = new Map(cats.map((c) => [c.id, c.name]));
+    const options = tags.map((t) => ({
+      id: t.id,
+      label: `${catName.get(t.category_id) ?? "?"} ▸ ${t.name}`,
+    }));
+    const byId: Record<string, string> = {};
+    for (const opt of options) byId[opt.id] = opt.label;
+    return { availableTags: options, tagLabelById: byId };
+  }, [tagCategoriesQuery.data, allTagsQuery.data]);
+
   const activeFilters = activeFilterCount(filters);
 
   const updateQuery = (q: string) =>
@@ -122,6 +157,14 @@ export default function App() {
       setSelectedTrack(track);
       setSelectedTrackIds(new Set([track.id]));
       setInspector("details");
+    },
+    onEditTags: (track) => {
+      // Use the current multi-selection if the right-clicked track is part of
+      // it; otherwise scope the picker to just the right-clicked track.
+      const ids = selectedTrackIds.has(track.id)
+        ? new Set(selectedTrackIds)
+        : new Set([track.id]);
+      setTagPickerTrackIds(ids);
     },
   });
 
@@ -172,6 +215,15 @@ export default function App() {
           },
         },
         {
+          key: "t",
+          handler: (event) => {
+            if (currentView !== "library" && currentView !== "playlists") return;
+            if (selectedTrackIds.size === 0) return;
+            event.preventDefault();
+            setTagPickerTrackIds(new Set(selectedTrackIds));
+          },
+        },
+        {
           key: "escape",
           handler: () => {
             if (
@@ -185,7 +237,7 @@ export default function App() {
           },
         },
       ],
-      [currentView, inspector, audio],
+      [currentView, inspector, audio, selectedTrackIds],
     ),
   );
 
@@ -354,7 +406,11 @@ export default function App() {
           )}
           {currentView === "library" && (
             <>
-              <FilterChips filters={filters} onChange={setFilters} />
+              <FilterChips
+                filters={filters}
+                onChange={setFilters}
+                tagLabelById={tagLabelById}
+              />
               {filters.missingFiles && (
                 <RelocateBanner libraryPath={libraryPath} />
               )}
@@ -397,7 +453,16 @@ export default function App() {
             />
           )}
           {currentView === "tags" && (
-            <CustomTagsPanel />
+            <CustomTagsPanel
+              onShowTracks={(tagIds) => {
+                setFilters((prev) => ({
+                  ...prev,
+                  tagIds,
+                  tagMatchAll: false,
+                }));
+                setCurrentView("library");
+              }}
+            />
           )}
           {currentView === "genre-cleanup" && (
             <CleanupPanel
@@ -504,6 +569,7 @@ export default function App() {
         onChange={setFilters}
         availableKeys={availableKeys}
         availableGenres={availableGenres}
+        availableTags={availableTags}
         missingFilesLoading={missingFilesLoading}
       />
 
@@ -513,6 +579,14 @@ export default function App() {
         onClose={() => setContextMenu(null)}
         actions={trackContextActions}
       />
+
+      {tagPickerTrackIds && (
+        <TagPickerModal
+          libraryPath={libraryPath}
+          selectedTrackIds={tagPickerTrackIds}
+          onClose={() => setTagPickerTrackIds(null)}
+        />
+      )}
     </div>
   );
 }

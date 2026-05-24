@@ -36,6 +36,7 @@ const EMPTY_CTX: FilterContext = {
   tracksWithCues: new Set(),
   tracksInAnyPlaylist: new Set(),
   tracksWithMissingFiles: new Set(),
+  tagsByTrack: new Map(),
 };
 
 const withQuery = (q: string): Filters => ({ ...EMPTY_FILTERS, query: q });

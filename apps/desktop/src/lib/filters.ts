@@ -19,6 +19,11 @@ export interface Filters {
   /** Restrict to tracks whose `folder_path` does not exist on disk. */
   missingFiles: boolean;
   commentContains: string;
+  /** Custom-tag IDs to restrict to. Empty = no constraint. */
+  tagIds: string[];
+  /** When true, a track must have *all* `tagIds` (AND); when false, *any*
+   *  matching tag is enough (OR). */
+  tagMatchAll: boolean;
 }
 
 export interface FilterContext {
@@ -27,6 +32,10 @@ export interface FilterContext {
   /** IDs of tracks whose audio file is missing on disk. Lazy — empty until
    *  the user enables the `missingFiles` filter. */
   tracksWithMissingFiles: Set<string>;
+  /** For each track that has at least one custom tag, the set of tag IDs
+   *  bound to it (scoped to the current library). Empty map if the user
+   *  hasn't created any tags yet. */
+  tagsByTrack: Map<string, Set<string>>;
 }
 
 export const EMPTY_FILTERS: Filters = {
@@ -42,6 +51,8 @@ export const EMPTY_FILTERS: Filters = {
   notInAnyPlaylist: false,
   missingFiles: false,
   commentContains: "",
+  tagIds: [],
+  tagMatchAll: false,
 };
 
 const STORAGE_KEY = "decks.filters.v1";
@@ -91,6 +102,7 @@ export function activeFilterCount(f: Filters): number {
   if (f.notInAnyPlaylist) n += 1;
   if (f.missingFiles) n += 1;
   if (f.commentContains.trim().length > 0) n += 1;
+  if (f.tagIds.length > 0) n += 1;
   return n;
 }
 
@@ -197,6 +209,23 @@ export function applyFilters(
 
     if (comment && !(t.comment?.toLowerCase().includes(comment) ?? false))
       return false;
+
+    if (filters.tagIds.length > 0) {
+      const bound = ctx.tagsByTrack.get(t.id);
+      if (!bound || bound.size === 0) return false;
+      if (filters.tagMatchAll) {
+        for (const id of filters.tagIds) if (!bound.has(id)) return false;
+      } else {
+        let any = false;
+        for (const id of filters.tagIds) {
+          if (bound.has(id)) {
+            any = true;
+            break;
+          }
+        }
+        if (!any) return false;
+      }
+    }
 
     return true;
   });

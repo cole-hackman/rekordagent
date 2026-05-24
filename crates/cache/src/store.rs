@@ -568,6 +568,11 @@ pub struct Tag {
     pub category_id: String,
     pub name: String,
     pub seq: i64,
+    /// Number of `track_tags` rows pointing at this tag, summed across every
+    /// library. Used by the UI to render a "(7)" usage badge without an extra
+    /// round-trip per tag.
+    #[serde(default)]
+    pub usage_count: i64,
 }
 
 impl CacheDb {
@@ -622,8 +627,14 @@ impl CacheDb {
 
     pub fn list_tags(&self, category_id: Option<&str>) -> Result<Vec<Tag>> {
         let mut tags = Vec::new();
+        let with_count = "SELECT t.id, t.category_id, t.name, t.seq, \
+             (SELECT COUNT(*) FROM track_tags tt WHERE tt.tag_id = t.id) AS usage_count \
+             FROM tags t";
         if let Some(cat_id) = category_id {
-            let mut stmt = self.conn.prepare("SELECT id, category_id, name, seq FROM tags WHERE category_id = ?1 ORDER BY seq, name")?;
+            let sql = format!(
+                "{with_count} WHERE t.category_id = ?1 ORDER BY t.seq, t.name"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
             let mut rows = stmt.query(rusqlite::params![cat_id])?;
             while let Some(r) = rows.next()? {
                 tags.push(Tag {
@@ -631,12 +642,12 @@ impl CacheDb {
                     category_id: r.get(1)?,
                     name: r.get(2)?,
                     seq: r.get(3)?,
+                    usage_count: r.get(4)?,
                 });
             }
         } else {
-            let mut stmt = self.conn.prepare(
-                "SELECT id, category_id, name, seq FROM tags ORDER BY category_id, seq, name",
-            )?;
+            let sql = format!("{with_count} ORDER BY t.category_id, t.seq, t.name");
+            let mut stmt = self.conn.prepare(&sql)?;
             let mut rows = stmt.query([])?;
             while let Some(r) = rows.next()? {
                 tags.push(Tag {
@@ -644,6 +655,7 @@ impl CacheDb {
                     category_id: r.get(1)?,
                     name: r.get(2)?,
                     seq: r.get(3)?,
+                    usage_count: r.get(4)?,
                 });
             }
         }
@@ -666,6 +678,7 @@ impl CacheDb {
             category_id: category_id.to_owned(),
             name: name.to_owned(),
             seq,
+            usage_count: 0,
         })
     }
 
@@ -698,9 +711,10 @@ impl CacheDb {
 
     pub fn get_track_tags(&self, library_path: &str, track_id: &str) -> Result<Vec<Tag>> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.category_id, t.name, t.seq 
-             FROM tags t 
-             JOIN track_tags tt ON t.id = tt.tag_id 
+            "SELECT t.id, t.category_id, t.name, t.seq,
+                    (SELECT COUNT(*) FROM track_tags tt2 WHERE tt2.tag_id = t.id) AS usage_count
+             FROM tags t
+             JOIN track_tags tt ON t.id = tt.tag_id
              WHERE tt.library_path = ?1 AND tt.track_id = ?2
              ORDER BY t.category_id, t.seq, t.name",
         )?;
@@ -710,6 +724,7 @@ impl CacheDb {
                 category_id: r.get(1)?,
                 name: r.get(2)?,
                 seq: r.get(3)?,
+                usage_count: r.get(4)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -761,6 +776,28 @@ impl CacheDb {
             rusqlite::params![library_path, track_id, tag_id],
         )?;
         Ok(())
+    }
+
+    /// Map every track in the given library to the list of tag IDs assigned to
+    /// it. Used by the frontend to populate the in-memory tag filter index so
+    /// `applyFilters` can evaluate tag predicates without per-track IPC.
+    pub fn list_track_tags_map(
+        &self,
+        library_path: &str,
+    ) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT track_id, tag_id FROM track_tags WHERE library_path = ?1",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![library_path], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut out: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (track_id, tag_id) = row?;
+            out.entry(track_id).or_default().push(tag_id);
+        }
+        Ok(out)
     }
 
     pub fn search_tracks_by_tags(
@@ -1137,5 +1174,61 @@ mod tests {
             db.list_changes(Some("/b.db")).unwrap()[0].status,
             ChangeStatus::Proposed
         );
+    }
+
+    #[test]
+    fn list_tags_reports_usage_count() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let cat = db.create_tag_category("Mood").unwrap();
+        let chill = db.create_tag(&cat.id, "Chill").unwrap();
+        let hype = db.create_tag(&cat.id, "Hype").unwrap();
+
+        // Fresh tags have a zero usage count.
+        let tags = db.list_tags(Some(&cat.id)).unwrap();
+        assert_eq!(tags.iter().find(|t| t.id == chill.id).unwrap().usage_count, 0);
+        assert_eq!(tags.iter().find(|t| t.id == hype.id).unwrap().usage_count, 0);
+
+        // Assign `chill` to two tracks, `hype` to one.
+        db.add_track_tag("/lib.db", "track-1", &chill.id).unwrap();
+        db.add_track_tag("/lib.db", "track-2", &chill.id).unwrap();
+        db.add_track_tag("/lib.db", "track-1", &hype.id).unwrap();
+
+        let tags = db.list_tags(Some(&cat.id)).unwrap();
+        let chill_row = tags.iter().find(|t| t.id == chill.id).unwrap();
+        let hype_row = tags.iter().find(|t| t.id == hype.id).unwrap();
+        assert_eq!(chill_row.usage_count, 2);
+        assert_eq!(hype_row.usage_count, 1);
+
+        // Removing a binding decrements the count.
+        db.remove_track_tag("/lib.db", "track-2", &chill.id).unwrap();
+        let tags = db.list_tags(None).unwrap();
+        assert_eq!(
+            tags.iter().find(|t| t.id == chill.id).unwrap().usage_count,
+            1
+        );
+    }
+
+    #[test]
+    fn list_track_tags_map_groups_by_track() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let cat = db.create_tag_category("Mood").unwrap();
+        let a = db.create_tag(&cat.id, "A").unwrap();
+        let b = db.create_tag(&cat.id, "B").unwrap();
+        db.add_track_tag("/lib.db", "t1", &a.id).unwrap();
+        db.add_track_tag("/lib.db", "t1", &b.id).unwrap();
+        db.add_track_tag("/lib.db", "t2", &b.id).unwrap();
+        // Different library — must be excluded.
+        db.add_track_tag("/other.db", "t1", &a.id).unwrap();
+
+        let map = db.list_track_tags_map("/lib.db").unwrap();
+        let mut t1 = map.get("t1").cloned().unwrap_or_default();
+        t1.sort();
+        let mut expected = vec![a.id.clone(), b.id.clone()];
+        expected.sort();
+        let t2 = map.get("t2").cloned().unwrap_or_default();
+        assert_eq!(t1, expected);
+        assert_eq!(t2, vec![b.id.clone()]);
+        // /other.db rows must be excluded — t1 in /lib.db should only have two tags.
+        assert_eq!(map.get("t1").map(|v| v.len()), Some(2));
     }
 }
