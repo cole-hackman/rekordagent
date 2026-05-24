@@ -76,4 +76,19 @@ mod tests {
         let p = propose(&tv("Song DJ X Remix"));
         assert_eq!(p[0].new_value, "Song (DJ X Remix)");
     }
+
+    #[test]
+    fn leaves_single_word_suffix_with_no_leading_space() {
+        // No preceding whitespace means the regex (`\s+(suffix)`) cannot match;
+        // nothing to wrap.
+        assert!(propose(&tv("Remix")).is_empty());
+        assert!(propose(&tv("Mix")).is_empty());
+    }
+
+    #[test]
+    fn leaves_already_parenthesized_when_multiple_groups() {
+        // Title already ends in a parens group — even if another mix suffix
+        // appears earlier, we must not double-wrap.
+        assert!(propose(&tv("Song (Original Mix) (Bootleg)")).is_empty());
+    }
 }

@@ -88,3 +88,10 @@ Manual real-library verification — the data-layer half is now automated via `s
 
 ## Sub-Plan 2 — Genre/Artist Cleanup test coverage (2026-05-24)
 Added `apps/desktop/src/components/CleanupPanel.test.tsx` (7 tests covering list/rename/delete for both `mode="genre"` and `mode="artist"`, shift-click multi-select, and empty/disabled states) plus Playwright `apps/desktop/e2e/cleanup.spec.ts` exercising the full rename → stage → accept → export round-trip. Smoke-script `list_genres` block deferred: no MCP/CLI tool exists for it (Tauri-only command), and adding one would be new feature code beyond this sub-plan's scope.
+
+## Sub-Plan 3 — Smart Fixes E2E + rigor (2026-05-24)
+Added `apps/desktop/e2e/smart-fixes.spec.ts` — full preview → deselect-one → stage → "Changes" round-trip against `smart_fix_preview` / `smart_fix_apply` / `list_changes` IPC mocks (fix_casing, 3 proposals, deselect middle, assert staged count = 2 and right field/old/new values surface in DiffReviewPanel). Added two Rust edge-case tests to `crates/smart-fixes/src/fixes/add_mix_parens.rs`: bare-suffix-only titles ("Original Mix", "Remix") yield no proposal, and a title already ending in a parens group is never double-wrapped even when an earlier suffix word matches.
+
+Deferred (documented gaps, not fixed — they are feature work beyond this rigor sub-plan):
+- Smoke-script `smart_fix_preview` block: deferred because `smart_fix_preview` / `smart_fix_apply` / `common_text_blocklist_*` are Tauri-only commands and have no `decks tools call` (MCP) exposure (`grep smart_fix crates/agent-tools/src/mcp.rs` → no matches).
+- Common-text blocklist UI: only the IPC wrappers exist (`commonTextBlocklistList` / `Add` / `Remove` in `apps/desktop/src/ipc.ts:603-613`). No UI in `SmartFixesPanel.tsx` consumes them, so there is nothing to vitest. Surfacing the blocklist as a settings sub-panel is a follow-up feature.
