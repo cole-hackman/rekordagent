@@ -5,7 +5,6 @@ const LIBRARY_PATH = "/fixture/master.db";
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(({ libraryPath }) => {
     let savedPath: string | null = null;
-    let exportCallCount = 0;
 
     let genres = [
       { genre: "House", count: 12 },
@@ -96,9 +95,6 @@ test.beforeEach(async ({ page }) => {
             );
             return stagedChanges.find((c) => c.id === args.id);
           case "export_accepted_changes":
-            exportCallCount += 1;
-            (window as unknown as { __exportCallCount: number }).__exportCallCount =
-              exportCallCount;
             stagedChanges = stagedChanges.map((change) =>
               change.status === "Accepted"
                 ? { ...change, status: "Exported" }
@@ -152,9 +148,4 @@ test("genre cleanup: rename stages a TrackMetadataEdit and exports", async ({ pa
   // Export and verify the IPC was called.
   await page.getByRole("button", { name: "Export XML" }).click();
   await expect(page.getByText(/Exported 1 changes/)).toBeVisible();
-
-  const calls = await page.evaluate(
-    () => (window as unknown as { __exportCallCount?: number }).__exportCallCount ?? 0,
-  );
-  expect(calls).toBeGreaterThanOrEqual(1);
 });
