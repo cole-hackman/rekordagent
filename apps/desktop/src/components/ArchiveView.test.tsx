@@ -37,6 +37,7 @@ const TRACK = {
   bit_rate: 0,
   release_year: null,
   dj_play_count: null,
+  energy: null,
 };
 
 beforeEach(() => {

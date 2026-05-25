@@ -107,6 +107,46 @@ impl CacheDb {
         }
     }
 
+    /// Bulk lookup of the latest cached `energy` for each given `track_uri`.
+    ///
+    /// Returns a map of `track_uri -> energy` for any URI that has at least one
+    /// non-null `energy` row in `audio_features`. If multiple analyzer versions
+    /// exist for the same URI, the most recent (highest `created_at`) wins.
+    ///
+    /// URIs without any cached energy are simply absent from the result map.
+    pub fn get_energy_by_uris(
+        &self,
+        track_uris: &[&str],
+    ) -> Result<std::collections::HashMap<String, f64>> {
+        let mut out = std::collections::HashMap::new();
+        if track_uris.is_empty() {
+            return Ok(out);
+        }
+        for chunk in track_uris.chunks(500) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT track_uri, energy, created_at FROM audio_features
+                 WHERE track_uri IN ({placeholders}) AND energy IS NOT NULL
+                 ORDER BY created_at ASC"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let params_iter: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(&*params_iter, |row| {
+                let uri: String = row.get(0)?;
+                let energy: f64 = row.get(1)?;
+                Ok((uri, energy))
+            })?;
+            for r in rows {
+                let (uri, energy) = r?;
+                // Ascending order means later inserts overwrite earlier ones —
+                // last write wins, which is the most recent analyzer version.
+                out.insert(uri, energy);
+            }
+        }
+        Ok(out)
+    }
+
     pub fn save_audio_fingerprint(&self, track_uri: &str, chroma_hash: &[u8]) -> Result<()> {
         self.conn.execute(
             "INSERT INTO audio_fingerprints (track_uri, chroma_hash)

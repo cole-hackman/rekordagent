@@ -133,6 +133,8 @@ export interface Track {
   bit_rate: number | null;
   release_year: number | null;
   dj_play_count: number | null;
+  /** 0.0–1.0 audio energy, hydrated from `audio_features` cache. */
+  energy: number | null;
 }
 
 export interface BeatGridEntry {

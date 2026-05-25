@@ -25,6 +25,10 @@ pub struct Track {
     pub bit_rate: Option<i64>,
     pub release_year: Option<i64>,
     pub dj_play_count: Option<i64>,
+    /// Audio energy 0.0–1.0, hydrated from the local cache's `audio_features`
+    /// table at the Tauri layer. `None` when no analysis has been cached.
+    #[serde(default)]
+    pub energy: Option<f32>,
 }
 
 /// A playlist or folder from `djmdPlaylist`.

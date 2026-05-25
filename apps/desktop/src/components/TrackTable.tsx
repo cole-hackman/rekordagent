@@ -17,64 +17,142 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { EmptyState } from "./EmptyState";
 import { ErrorPanel } from "./ErrorPanel";
 import { applyFilters, type FilterContext, type Filters } from "../lib/filters";
+import { colorForKey } from "../lib/camelot";
+import { EnergyBar } from "./EnergyBar";
 import type { Track } from "../types";
 
 const ROW_H = 28;
 
-const COLUMNS: ColumnDef<Track>[] = [
-  {
-    accessorKey: "title",
-    header: "Title",
-    size: 280,
-    cell: (info) => <span className="truncate">{info.getValue<string>()}</span>,
-  },
-  {
-    accessorKey: "artist",
-    header: "Artist",
-    size: 180,
-    cell: (info) => (
-      <span className="truncate text-ink-secondary">{info.getValue<string | null>() ?? "—"}</span>
-    ),
-  },
-  {
-    accessorKey: "bpm",
-    header: "BPM",
-    size: 64,
-    meta: { align: "right" },
-    cell: (info) => {
-      const v = info.getValue<number | null>();
-      return v != null && v > 0 ? v.toFixed(1) : "—";
+const MAX_INLINE_TAGS = 3;
+
+function buildColumns(
+  tagsByTrack: Map<string, Set<string>>,
+  tagLabelById: Record<string, string>,
+  showTagsColumn: boolean,
+): ColumnDef<Track>[] {
+  const cols: ColumnDef<Track>[] = [
+    {
+      accessorKey: "title",
+      header: "Title",
+      size: 280,
+      cell: (info) => <span className="truncate">{info.getValue<string>()}</span>,
     },
-  },
-  {
-    accessorKey: "musical_key",
-    header: "Key",
-    size: 56,
-    meta: { align: "center" },
-    cell: (info) => info.getValue<string | null>() ?? "—",
-  },
-  {
-    accessorKey: "duration_secs",
-    header: "Time",
-    size: 60,
-    meta: { align: "right" },
-    cell: (info) => {
-      const s = info.getValue<number | null>();
-      if (s == null) return "—";
-      const m = Math.floor(s / 60);
-      const ss = String(s % 60).padStart(2, "0");
-      return `${m}:${ss}`;
+    {
+      accessorKey: "artist",
+      header: "Artist",
+      size: 180,
+      cell: (info) => (
+        <span className="truncate text-ink-secondary">{info.getValue<string | null>() ?? "—"}</span>
+      ),
     },
-  },
-  {
-    accessorKey: "genre",
-    header: "Genre",
-    size: 130,
-    cell: (info) => (
-      <span className="truncate text-ink-secondary">{info.getValue<string | null>() ?? "—"}</span>
-    ),
-  },
-];
+    {
+      accessorKey: "bpm",
+      header: "BPM",
+      size: 64,
+      meta: { align: "right" },
+      cell: (info) => {
+        const v = info.getValue<number | null>();
+        return v != null && v > 0 ? v.toFixed(1) : "—";
+      },
+    },
+    {
+      accessorKey: "musical_key",
+      header: "Key",
+      size: 56,
+      meta: { align: "center" },
+      cell: (info) => {
+        const value = info.getValue<string | null>();
+        if (value == null || value === "") return "—";
+        const color = colorForKey(value);
+        return (
+          <span style={color ? { color } : undefined} className="font-mono">
+            {value}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "energy",
+      header: "Energy",
+      size: 80,
+      enableColumnFilter: false,
+      meta: { align: "center" },
+      cell: (info) => {
+        const v = info.getValue<number | null>();
+        if (v == null) return "—";
+        return <EnergyBar value={v} />;
+      },
+    },
+    {
+      accessorKey: "duration_secs",
+      header: "Time",
+      size: 60,
+      meta: { align: "right" },
+      cell: (info) => {
+        const s = info.getValue<number | null>();
+        if (s == null) return "—";
+        const m = Math.floor(s / 60);
+        const ss = String(s % 60).padStart(2, "0");
+        return `${m}:${ss}`;
+      },
+    },
+    {
+      accessorKey: "genre",
+      header: "Genre",
+      size: 130,
+      cell: (info) => (
+        <span className="truncate text-ink-secondary">{info.getValue<string | null>() ?? "—"}</span>
+      ),
+    },
+  ];
+
+  if (showTagsColumn) {
+    cols.push({
+      id: "tags",
+      header: "Tags",
+      size: 200,
+      enableSorting: false,
+      enableColumnFilter: false,
+      cell: (info) => {
+        const trackId = info.row.original.id;
+        const ids = tagsByTrack.get(trackId);
+        if (!ids || ids.size === 0) {
+          return <span className="text-ink-faint">—</span>;
+        }
+        const idArr = Array.from(ids);
+        const visible = idArr.slice(0, MAX_INLINE_TAGS);
+        const overflow = idArr.length - visible.length;
+        return (
+          <div className="flex items-center gap-1 overflow-hidden">
+            {visible.map((id) => {
+              // Tag labels look like "Mood ▸ Energetic" — keep just the leaf for
+              // the chip to stay readable in a 200px column.
+              const fullLabel = tagLabelById[id] ?? id;
+              const leaf = fullLabel.includes("▸")
+                ? fullLabel.split("▸").pop()?.trim() ?? fullLabel
+                : fullLabel;
+              return (
+                <span
+                  key={id}
+                  title={fullLabel}
+                  data-testid="track-tag-chip"
+                  className="inline-flex max-w-[80px] truncate rounded bg-elevated px-1.5 py-0 text-[10px] text-ink-secondary"
+                >
+                  {leaf}
+                </span>
+              );
+            })}
+            {overflow > 0 && (
+              <span className="text-[10px] text-ink-faint">+{overflow} more</span>
+            )}
+          </div>
+        );
+      },
+    });
+  }
+
+  return cols;
+}
 
 function SortChevron({ direction }: { direction: "asc" | "desc" | false }) {
   if (!direction) return null;
@@ -99,6 +177,8 @@ interface Props {
   onSelect: (track: Track) => void;
   onTrackContextMenu?: (track: Track, anchor: { x: number; y: number }) => void;
   tracksOverride?: Track[];
+  /** Lookup table from tag-id → display label, used by the inline Tags column. */
+  tagLabelById?: Record<string, string>;
 }
 
 export function TrackTable({
@@ -110,6 +190,7 @@ export function TrackTable({
   onSelect,
   onTrackContextMenu,
   tracksOverride,
+  tagLabelById,
 }: Props) {
   const { data: fetchedTracks = [], isLoading, error } = useLibrary(libraryPath);
   const tracks = tracksOverride ?? fetchedTracks;
@@ -127,9 +208,15 @@ export function TrackTable({
     return applyFilters(fetchedTracks, filters, filterCtx);
   }, [fetchedTracks, filters, filterCtx, tracksOverride]);
 
+  const showTagsColumn = filterCtx.tagsByTrack.size > 0;
+  const columns = useMemo(
+    () => buildColumns(filterCtx.tagsByTrack, tagLabelById ?? {}, showTagsColumn),
+    [filterCtx.tagsByTrack, tagLabelById, showTagsColumn],
+  );
+
   const table = useReactTable({
     data: filtered,
-    columns: COLUMNS,
+    columns,
     state: { sorting, columnFilters },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,

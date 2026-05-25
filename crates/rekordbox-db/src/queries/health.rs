@@ -228,6 +228,7 @@ mod tests {
             bit_rate: None,
             release_year: None,
             dj_play_count: None,
+            energy: None,
         }
     }
 

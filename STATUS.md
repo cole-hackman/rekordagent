@@ -1,5 +1,8 @@
 # Status
 
+## 2026-05-24 — Sub-Plan 7: enhanced track columns
+TrackTable now exposes an **Energy** column (bar visual; hydrated from `cache.audio_features.energy` per `Track.folder_path`), tints **Key** values with the Mixed In Key Camelot palette (new `lib/camelot.ts`), and conditionally renders an **inline Tags** column with up to three chips + overflow when any tag bindings exist for the active library. Rust `Track` gained `energy: Option<f32>`; `list_tracks` / `library_search` / `list_incoming_tracks` / `list_archived_tracks` call a new `hydrate_energy` helper backed by a batched `CacheDb::get_energy_by_uris` lookup (no N+1).
+
 ## Current phase
 QA-pass remediation (2026-05-17): fixed six functional bugs that evaded the green test suites — missing `stream_claude_code_chat` Tauri command (re-implemented), ANLZ path-join bug in intro-cue staging (two sites, now share `anlz::resolve_anlz_path` helper), wrong Claude model id (`claude-opus-4-5` → settings-driven, defaults to `claude-sonnet-4-6`), global spacebar handler that swallowed button activation (moved to shared `useKeyboardShortcuts` with button/link/role=button exclusions), `is_playing` never clearing at end of track (audio thread now emits `playback-ended` and clears state), and Relocate flow staging `old_value: null` instead of the original path (now stages real old path + invalidates library/missing-files queries). Manual real-library verification still the v0.1.0 blocker.
 

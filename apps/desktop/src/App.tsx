@@ -422,6 +422,7 @@ export default function App() {
                 onSelectionChange={handleSelectionChange}
                 onSelect={handleTrackSelect}
                 onTrackContextMenu={handleTrackContextMenu}
+                tagLabelById={tagLabelById}
               />
             </>
           )}

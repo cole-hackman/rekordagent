@@ -50,6 +50,7 @@ fn row_to_track(row: &rusqlite::Row<'_>) -> rusqlite::Result<Track> {
         bit_rate: row.get(14)?,
         release_year: row.get(15)?,
         dj_play_count: row.get(16)?,
+        energy: None,
     })
 }
 

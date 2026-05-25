@@ -41,6 +41,7 @@ beforeEach(() => {
         bit_rate: null,
         release_year: null,
         dj_play_count: null,
+        energy: null,
       },
     ],
   });
@@ -129,6 +130,7 @@ describe("PlaylistPanel", () => {
       bit_rate: null,
       release_year: null,
       dj_play_count: null,
+      energy: null,
     };
     vi.mocked(getPlaylist).mockResolvedValue({
       playlist: { id: "2", name: "Techno Set", kind: "Playlist", parent_id: null, seq: 1 },

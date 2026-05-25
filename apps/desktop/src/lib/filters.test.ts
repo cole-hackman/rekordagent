@@ -29,6 +29,7 @@ function track(partial: Partial<Track>): Track {
     bit_rate: null,
     release_year: null,
     dj_play_count: null,
+    energy: null,
     ...partial,
   };
 }

@@ -45,6 +45,33 @@ fn cache_db(app: &tauri::AppHandle) -> Result<cache::CacheDb, String> {
     cache::CacheDb::open(&data_dir.join("cache.sqlite3")).map_err(|e| e.to_string())
 }
 
+/// Fill in `Track.energy` from the local cache's `audio_features` table.
+///
+/// Tracks come from `master.db` (no `energy` column); `audio_features` lives in
+/// `cache.sqlite3` and is keyed by `track_uri`, which the rest of the codebase
+/// treats as the track's `folder_path` (raw file-system path — see
+/// `analyze_file_cached`). One batched query per ≤500-track chunk; no N+1.
+fn hydrate_energy(tracks: &mut [decks_core::rekordbox_db::Track], cache: &cache::CacheDb) {
+    let uris: Vec<&str> = tracks
+        .iter()
+        .filter_map(|t| t.folder_path.as_deref())
+        .collect();
+    if uris.is_empty() {
+        return;
+    }
+    let Ok(map) = cache.get_energy_by_uris(&uris) else {
+        // Cache lookup is best-effort; degrade gracefully (no energy column data).
+        return;
+    };
+    for t in tracks.iter_mut() {
+        if let Some(uri) = t.folder_path.as_deref() {
+            if let Some(e) = map.get(uri) {
+                t.energy = Some(*e as f32);
+            }
+        }
+    }
+}
+
 // ── Config helpers ────────────────────────────────────────────────────────────
 
 fn read_config(app: &tauri::AppHandle) -> Result<serde_json::Value, String> {
@@ -86,11 +113,18 @@ async fn validate_library_path(path: String) -> Result<u64, String> {
 }
 
 #[tauri::command]
-async fn list_tracks(path: String) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
+async fn list_tracks(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Vec<decks_core::rekordbox_db::Track>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
             .map_err(|e| e.to_string())?;
-        db.tracks().map_err(|e| e.to_string())
+        let mut tracks = db.tracks().map_err(|e| e.to_string())?;
+        if let Ok(cache) = cache_db(&app) {
+            hydrate_energy(&mut tracks, &cache);
+        }
+        Ok(tracks)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -139,6 +173,7 @@ async fn set_library_path(app: tauri::AppHandle, path: String) -> Result<(), Str
 
 #[tauri::command]
 async fn library_search(
+    app: tauri::AppHandle,
     path: String,
     query: String,
     limit: Option<usize>,
@@ -149,6 +184,9 @@ async fn library_search(
         let mut results = db.search_tracks(&query).map_err(|e| e.to_string())?;
         if let Some(n) = limit {
             results.truncate(n);
+        }
+        if let Ok(cache) = cache_db(&app) {
+            hydrate_energy(&mut results, &cache);
         }
         Ok(results)
     })
@@ -2106,10 +2144,12 @@ async fn list_incoming_tracks(
             .map_err(|e| e.to_string())?
             .into_iter()
             .collect();
-        Ok(tracks
+        let mut filtered: Vec<_> = tracks
             .into_iter()
             .filter(|t| !archived.contains(&t.id))
-            .collect())
+            .collect();
+        hydrate_energy(&mut filtered, &cache);
+        Ok(filtered)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2146,7 +2186,9 @@ async fn list_archived_tracks(
         }
         let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&library_path))
             .map_err(|e| e.to_string())?;
-        db.tracks_by_ids(&ids).map_err(|e| e.to_string())
+        let mut tracks = db.tracks_by_ids(&ids).map_err(|e| e.to_string())?;
+        hydrate_energy(&mut tracks, &cache);
+        Ok(tracks)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2566,6 +2608,7 @@ mod tests {
                 folder_path: None,
                 analysis_data_path: None,
                 file_type: None,
+                energy: None,
             },
             Track {
                 id: "track2".into(),
@@ -2585,6 +2628,7 @@ mod tests {
                 folder_path: None,
                 analysis_data_path: None,
                 file_type: None,
+                energy: None,
             },
         ];
 
@@ -2691,6 +2735,68 @@ mod tests {
         assert_eq!(pl_tracks[1], vec![1]);
     }
 
+    #[test]
+    fn hydrate_energy_populates_from_cache() {
+        // Seed cache.db's audio_features with one row that has energy set.
+        let cache = cache::CacheDb::open_in_memory().unwrap();
+        cache
+            .upsert_audio_features("/music/a.mp3", "v1", Some(128.0), None, Some(0.72), None)
+            .unwrap();
+        // A second track with no audio_features row.
+        let mut tracks = vec![
+            Track {
+                id: "t1".into(),
+                title: "A".into(),
+                artist: None,
+                album: None,
+                genre: None,
+                musical_key: None,
+                bpm: None,
+                duration_secs: None,
+                rating: None,
+                comment: None,
+                folder_path: Some("/music/a.mp3".into()),
+                analysis_data_path: None,
+                file_type: None,
+                sample_rate: None,
+                bit_rate: None,
+                release_year: None,
+                dj_play_count: None,
+                energy: None,
+            },
+            Track {
+                id: "t2".into(),
+                title: "B".into(),
+                artist: None,
+                album: None,
+                genre: None,
+                musical_key: None,
+                bpm: None,
+                duration_secs: None,
+                rating: None,
+                comment: None,
+                folder_path: Some("/music/b.mp3".into()),
+                analysis_data_path: None,
+                file_type: None,
+                sample_rate: None,
+                bit_rate: None,
+                release_year: None,
+                dj_play_count: None,
+                energy: None,
+            },
+        ];
+
+        super::hydrate_energy(&mut tracks, &cache);
+
+        assert!(tracks[0].energy.is_some(), "t1 should be hydrated");
+        assert!(
+            (tracks[0].energy.unwrap() - 0.72).abs() < 1e-5,
+            "t1 energy should be 0.72, got {:?}",
+            tracks[0].energy
+        );
+        assert!(tracks[1].energy.is_none(), "t2 has no cache row");
+    }
+
     fn make_track(id: &str, title: &str) -> Track {
         Track {
             id: id.into(),
@@ -2710,6 +2816,7 @@ mod tests {
             folder_path: None,
             analysis_data_path: None,
             file_type: None,
+            energy: None,
         }
     }
 
