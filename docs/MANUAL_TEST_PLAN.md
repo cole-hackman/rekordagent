@@ -94,6 +94,38 @@ Known `v0.1.0` limitations:
 - [ ] MCP tools do not write directly to `master.db`.
 - [ ] OpenAI path is treated as pending until HTTP MCP transport exists.
 
+## Sync Sub-Plan 6 Verification (disposable-DB smoke)
+
+Sub-Plan 6 (2026-05-24) wires `cue_destination` / `keep_grids` / `convert_keys` from the SyncPanel through to direct `master.db` writes. Per ADR-0010, this is the first feature that mutates `master.db` directly under `WriteGuard`. The synthetic-fixture Rust + vitest tests already pass on `codex/mvp-implementation`; this section is the **manual** disposable-DB step that must be run on a real Rekordbox 7 library before each release that touches the applier.
+
+**Never run this against `~/Library/Pioneer/rekordbox/master.db`.** Always copy it first.
+
+Setup:
+
+```sh
+# 1. Stage a disposable copy.
+mkdir -p /tmp/decks-sync-smoke
+cp "$HOME/Library/Pioneer/rekordbox/master.db" /tmp/decks-sync-smoke/master.db
+# Also copy share/peers if present so the WAL probe sees the real layout.
+cp "$HOME/Library/Pioneer/rekordbox/master.db-wal" /tmp/decks-sync-smoke/ 2>/dev/null || true
+cp "$HOME/Library/Pioneer/rekordbox/master.db-shm" /tmp/decks-sync-smoke/ 2>/dev/null || true
+shasum -a 256 /tmp/decks-sync-smoke/master.db > /tmp/decks-sync-smoke/before.sha256
+```
+
+In the app (point library path at `/tmp/decks-sync-smoke/master.db`):
+
+- [ ] **Camelot key conversion.** Stage a `TrackMetadataEdit` on field `Key` with new value `"C minor"`, set `Convert keys` to `Camelot`, click Apply. Confirm `SELECT k.ScaleName FROM djmdContent c JOIN djmdKey k ON c.KeyID=k.ID WHERE c.ID=<track_id>` returns `"5A"`.
+- [ ] **Open Key conversion.** Same flow, `Convert keys = Open Key`, expect `"5m"`.
+- [ ] **Invalid key falls through.** Stage with new value `"Banana"`, `Convert keys = Camelot`, click Apply. Expect ScaleName = `"Banana"` (the conversion logs a warning but does not fail the sync).
+- [ ] **keep_grids skips BPM.** Stage a `TrackMetadataEdit` on field `BPM` (e.g. 120 → 128), tick "Don't touch my grids", click Apply. Expect the change to appear in `res.applied` but the `djmdContent.BPM` value unchanged.
+- [ ] **cue_destination=memory.** Stage a `TrackAddCue` (e.g. via the "Add intro cue" agent tool — or hand-stage via DevTools) with `new_value.kind=3`, set `Cue destination = Memory cues`, click Apply. Expect one row in `djmdCue` with `Kind=0` (not 3).
+- [ ] **cue_destination=both.** Same staged change, `Cue destination = Both`. Expect two rows: one with `Kind=0` and one with `Kind=<staged hot slot>`.
+- [ ] **Backup created.** Verify `ls /tmp/decks-sync-smoke/master.db.*.bak` shows a fresh timestamped backup from the first Apply of the session.
+- [ ] **Lock probe.** Open Rekordbox against a different library so it holds a lock on its own DB, then try Apply against `/tmp/decks-sync-smoke/master.db`. SyncPanel should *not* show the locked banner (different file), and the write should succeed. To actually exercise the lock branch, run `sqlite3 /tmp/decks-sync-smoke/master.db "BEGIN IMMEDIATE;"` in a held shell and re-Apply — the lock banner should appear and the Apply button should be disabled.
+- [ ] **Round-trip.** After all the above, run `shasum -a 256 /tmp/decks-sync-smoke/master.db` and confirm the DB has been mutated (sha differs from `before.sha256`). Then copy the `.bak` back over and confirm sha returns to baseline.
+
+If any of these fail, revert the disposable DB from the `.bak` and file an issue with the exact step + the SyncPanel option payload before debugging.
+
 ## macOS Build Artifacts
 
 Latest local build completed on 2026-05-16:

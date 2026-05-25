@@ -170,3 +170,27 @@
 **Trade-offs accepted:**
 - This rule makes agent-led sessions feel slower because every "done" is gated on verification output, not on the agent's self-report.
 - Some of the partial wiring left behind (e.g., SetBuilderView, audio-fingerprint scan) had legitimate aspirations; deleting them in this remediation pass forfeits that progress. The deleted code is in git history and can be revisited.
+
+## ADR-0010 — Sync Relaxes the "Never Write master.db" Invariant Under WriteGuard
+
+**Date:** 2026-05-24
+**Status:** Accepted
+
+**Context:** Until now, the project-wide invariant was "the application never mutates the user's `master.db` directly — accepted changes round-trip through Rekordbox XML export, which the user imports manually." Sub-Plan 6 wires the SyncPanel options (`cue_destination`, `keep_grids`, `convert_keys`) end-to-end into `changes::applier::apply_with_options`, which writes directly to `djmdContent` / `djmdCue` / `djmdKey` / playlist tables on the real database. That is, by construction, master.db mutation.
+
+**Decision:** The "never mutate master.db" invariant is formally relaxed for the Sync feature only:
+
+1. Sync is an explicit, opt-in user action. The user picks the changes, confirms via a dialog whose body reads "A timestamped backup will be created beside master.db on the first write of this session," and clicks Apply. No background path mutates master.db.
+2. Every Sync write is gated by `decks_core::rekordbox_db::WriteGuard::acquire_for_write`, which (a) probes whether Rekordbox holds a WAL lock and refuses to proceed if so, and (b) creates a timestamped sibling backup `master.db.<unix-ts>.bak` on first write of the session. The transaction commits atomically inside `WriteGuard::with_tx`, so partial writes cannot corrupt master.db.
+3. XML export remains the default, non-destructive path. Cleanup, Smart Fixes, Track Matcher, and the agent flow all stage `ChangeKind::*` records that are previewable in the Diff panel and exported via `export_accepted_changes` by default. Sync is offered as the more convenient alternative for users who want to skip the manual rekordbox-import dance and accept the (mitigated) write risk.
+4. The disposable-DB smoke harness (`scripts/real-library-smoke.sh` + a copy of a real master.db on a scratch path) is the verification gate before each release that touches the applier. Tests in `crates/changes/src/applier{,/tracks.rs,/cues.rs}` exercise SQL-level correctness against synthetic schemas; the disposable-DB test exercises round-trip behaviour against a real Rekordbox 7 schema (column quirks, FK shape, ANLZ presence) without touching `~/Library/Pioneer/rekordbox/master.db`.
+
+**Reasons:**
+1. Round-trip through XML export is technically lossless but operationally painful — the user has to quit Rekordbox, run File → Import, and confirm a fairly opaque XML merge. For "rename one genre across 200 tracks" workflows the friction overwhelms the value.
+2. The mitigations (WriteGuard lock probe + timestamped backup + transactional writes) reduce the realistic blast radius of a bad write from "library destroyed" to "revert by copying the .bak back" — a recoverable failure mode.
+3. The Cleanup option toggles (cue destination, key conversion, keep-grids) are write-time decisions; they don't make sense in an export-only model because XML import doesn't expose these knobs.
+
+**Trade-offs accepted:**
+- Future contributors must remember that a Sync code path runs against the real database. Synthetic-fixture tests catch most regressions, but anything that depends on real-library quirks (column variants, ANLZ presence, FK collation) needs the disposable-DB smoke before shipping.
+- The `keep_grids` and `cue_destination` semantics are intentionally narrow in this first cut: `keep_grids` only skips `TrackMetadataEdit{field: "BPM"}` (beat-grid ANLZ edits are not staged anywhere today, so there's nothing else to skip); `cue_destination` only controls the `djmdCue.Kind` value of newly inserted hot/memory cue rows (it does not retroactively re-slot existing cues). Both are documented inline in `crates/changes/src/applier.rs`.
+- `convert_keys` writes the converted string through the existing `djmdKey` FK path (`get_or_create_fk`). If the user later switches between Camelot and Open Key formats, that creates additional `djmdKey` rows. Acceptable: `djmdKey` is small and Rekordbox tolerates orphan keys.
