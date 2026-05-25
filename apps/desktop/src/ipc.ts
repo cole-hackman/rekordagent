@@ -642,6 +642,18 @@ export async function matchTracks(
   return invoke<MatchResult[]>("match_tracks", { libraryPath, candidates });
 }
 
+export async function parseCsvForMatcher(
+  content: string,
+  titleCol: string,
+  artistCol?: string,
+): Promise<MatchInput[]> {
+  return invoke<MatchInput[]>("parse_csv_for_matcher", {
+    content,
+    titleCol,
+    artistCol: artistCol ?? null,
+  });
+}
+
 export async function createPlaylistFromTracks(
   libraryPath: string,
   name: string,

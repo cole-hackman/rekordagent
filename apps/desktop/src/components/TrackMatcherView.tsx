@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   createPlaylistFromTracks,
   matchTracks,
+  parseCsvForMatcher,
   type MatchInput,
   type MatchResult,
 } from "../ipc";
@@ -21,8 +22,9 @@ export function TrackMatcherView({ libraryPath, onGoToSync }: Props) {
 
   const [source, setSource] = useState<Source>("paste");
   const [pasted, setPasted] = useState("");
-  const [csvRows, setCsvRows] = useState<string[][]>([]);
+  const [csvText, setCsvText] = useState<string>("");
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvRowCount, setCsvRowCount] = useState<number>(0);
   const [titleCol, setTitleCol] = useState<number>(0);
   const [artistCol, setArtistCol] = useState<number>(-1);
   const [results, setResults] = useState<MatchResult[]>([]);
@@ -52,13 +54,6 @@ export function TrackMatcherView({ libraryPath, onGoToSync }: Props) {
       });
   };
 
-  const parseCsvFromRows = (): MatchInput[] => {
-    return csvRows.map((row) => ({
-      title: (row[titleCol] ?? "").trim(),
-      artist: artistCol >= 0 ? (row[artistCol] ?? "").trim() || undefined : undefined,
-    }));
-  };
-
   const onTxtUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -71,20 +66,36 @@ export function TrackMatcherView({ libraryPath, onGoToSync }: Props) {
     const f = e.target.files?.[0];
     if (!f) return;
     const text = await f.text();
-    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length === 0) return;
-    const rows = lines.map(parseCsvLine);
-    setCsvHeaders(rows[0]);
-    setCsvRows(rows.slice(1));
+    // Extract headers + row count locally for the column-mapping UI without
+    // committing to a mapping yet. Backend re-parses authoritatively at match-time.
+    const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+    const headers = firstLine.length > 0 ? firstLine.split(",").map((h) => h.trim()) : [];
+    const nonEmpty = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    setCsvText(text);
+    setCsvHeaders(headers);
+    setCsvRowCount(Math.max(0, nonEmpty.length - 1));
     setTitleCol(0);
-    setArtistCol(rows[0].length > 1 ? 1 : -1);
+    setArtistCol(headers.length > 1 ? 1 : -1);
     setSource("csv");
   };
 
   const doMatch = async () => {
     setMatching(true);
     try {
-      const inputs = source === "csv" ? parseCsvFromRows() : parsePasted();
+      let inputs: MatchInput[];
+      if (source === "csv") {
+        if (!csvText || csvHeaders.length === 0 || titleCol < 0) {
+          toast({ variant: "info", message: "Upload a CSV first." });
+          return;
+        }
+        inputs = await parseCsvForMatcher(
+          csvText,
+          csvHeaders[titleCol]!,
+          artistCol >= 0 ? csvHeaders[artistCol] : undefined,
+        );
+      } else {
+        inputs = parsePasted();
+      }
       if (inputs.length === 0) {
         toast({ variant: "info", message: "No input rows to match." });
         return;
@@ -216,7 +227,7 @@ export function TrackMatcherView({ libraryPath, onGoToSync }: Props) {
             </select>
           </label>
           <span className="text-xs text-ink-muted">
-            {csvRows.length} rows · {csvHeaders.length} columns
+            {csvRowCount} rows · {csvHeaders.length} columns
           </span>
         </div>
       )}
@@ -295,37 +306,3 @@ function statusIcon(s: "Exact" | "Fuzzy" | "Unmatched") {
   return <span className="text-orange-500">—</span>;
 }
 
-// Minimal CSV parser: handles double-quoted fields with escaped quotes.
-function parseCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let i = 0;
-  let inQuotes = false;
-  while (i < line.length) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i += 2;
-      } else if (ch === '"') {
-        inQuotes = false;
-        i += 1;
-      } else {
-        cur += ch;
-        i += 1;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-      i += 1;
-    } else if (ch === ",") {
-      out.push(cur);
-      cur = "";
-      i += 1;
-    } else {
-      cur += ch;
-      i += 1;
-    }
-  }
-  out.push(cur);
-  return out;
-}

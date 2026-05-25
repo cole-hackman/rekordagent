@@ -43,3 +43,5 @@ serde_json = "1"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# CSV parsing
+csv = "1.3"

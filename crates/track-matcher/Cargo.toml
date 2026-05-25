@@ -8,3 +8,5 @@ description = "Fuzzy-match external track lists against the local library"
 [dependencies]
 serde = { workspace = true }
 regex = "1"
+csv = { workspace = true }
+anyhow = { workspace = true }

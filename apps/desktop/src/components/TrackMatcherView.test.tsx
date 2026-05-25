@@ -2,12 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TrackMatcherView } from "./TrackMatcherView";
-import { createPlaylistFromTracks, matchTracks } from "../ipc";
+import { createPlaylistFromTracks, matchTracks, parseCsvForMatcher } from "../ipc";
 import { WithProviders } from "../test-utils/providers";
 
 vi.mock("../ipc", () => ({
   matchTracks: vi.fn(),
   createPlaylistFromTracks: vi.fn(),
+  parseCsvForMatcher: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -60,6 +61,48 @@ describe("TrackMatcherView", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Match" }));
     expect(matchTracks).toHaveBeenCalledWith("/db", [{ title: "Lone Title" }]);
+  });
+
+  it("CSV upload shows column mapping UI and delegates parse to backend", async () => {
+    vi.mocked(parseCsvForMatcher).mockResolvedValue([
+      { title: "Strobe", artist: "Deadmau5" },
+    ]);
+    vi.mocked(matchTracks).mockResolvedValue([
+      {
+        input_title: "Strobe",
+        input_artist: "Deadmau5",
+        track: { id: "t1", title: "Strobe", artist: "Deadmau5" },
+        score: 1.0,
+        status: "Exact",
+      },
+    ]);
+    render_();
+    // Switch source to CSV via the source dropdown.
+    const sourceSelect = screen.getAllByRole("combobox")[0];
+    await userEvent.selectOptions(sourceSelect, "csv");
+
+    // Upload a CSV file.
+    const csv = "title,artist\nStrobe,Deadmau5\n";
+    const file = new File([csv], "list.csv", { type: "text/csv" });
+    // jsdom's File doesn't implement .text() in this version — stub it.
+    Object.defineProperty(file, "text", {
+      value: () => Promise.resolve(csv),
+    });
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    await userEvent.upload(input, file);
+
+    // Column-mapping UI surfaces headers.
+    expect(await screen.findByText(/1 rows · 2 columns/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Match" }));
+
+    expect(parseCsvForMatcher).toHaveBeenCalledWith(csv, "title", "artist");
+    expect(matchTracks).toHaveBeenCalledWith("/db", [
+      { title: "Strobe", artist: "Deadmau5" },
+    ]);
+    expect(await screen.findByText(/1 \/ 1 tracks matched/)).toBeInTheDocument();
   });
 
   it("Create playlist prompts for name and stages", async () => {

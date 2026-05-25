@@ -1886,6 +1886,16 @@ async fn match_tracks(
 }
 
 #[tauri::command]
+fn parse_csv_for_matcher(
+    content: String,
+    title_col: String,
+    artist_col: Option<String>,
+) -> Result<Vec<track_matcher::MatchInput>, String> {
+    track_matcher::csv_input::parse_csv(&content, &title_col, artist_col.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn create_playlist_from_tracks(
     app: tauri::AppHandle,
     library_path: String,
@@ -2482,6 +2492,7 @@ pub fn run() {
             sync_execute,
             sync_execute_accepted,
             match_tracks,
+            parse_csv_for_matcher,
             create_playlist_from_tracks,
             stage_track_delete,
             smart_fix_preview,

@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+pub mod csv_input;
 pub mod normalise;
 
 #[derive(Debug, Clone)]
@@ -12,7 +13,7 @@ pub struct MatchCandidate {
     pub artist: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MatchInput {
     pub title: String,
     pub artist: Option<String>,
