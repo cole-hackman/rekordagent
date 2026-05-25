@@ -1512,6 +1512,29 @@ struct SyncOptions {
     playlist_id: Option<String>,
     #[serde(default)]
     since_ts: Option<i64>,
+    // Sub-Plan 6: writer-side options. Forwarded into `changes::applier`.
+    #[serde(default)]
+    cue_destination: changes::applier::CueDestination,
+    #[serde(default)]
+    keep_grids: bool,
+    #[serde(default)]
+    convert_keys: changes::applier::KeyFormat,
+    #[serde(default)]
+    change_to_nearest_color: bool,
+    #[serde(default)]
+    all_smartlists_to_playlists: bool,
+}
+
+impl SyncOptions {
+    fn applier_options(&self) -> changes::applier::SyncOptions {
+        changes::applier::SyncOptions {
+            cue_destination: self.cue_destination,
+            keep_grids: self.keep_grids,
+            convert_keys: self.convert_keys,
+            change_to_nearest_color: self.change_to_nearest_color,
+            all_smartlists_to_playlists: self.all_smartlists_to_playlists,
+        }
+    }
 }
 
 fn filter_for_mode(
@@ -1654,8 +1677,12 @@ async fn sync_execute(
         )
         .map_err(|e| e.to_string())?;
 
+        let applier_opts = options.applier_options();
         let res = guard
-            .with_tx(|tx| changes::applier::apply(tx, &to_apply).map_err(|e| anyhow::anyhow!(e)))
+            .with_tx(|tx| {
+                changes::applier::apply_with_options(tx, &to_apply, &applier_opts)
+                    .map_err(|e| anyhow::anyhow!(e))
+            })
             .map_err(|e| e.to_string())?;
         drop(guard);
         drop(session);

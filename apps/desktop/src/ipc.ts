@@ -431,9 +431,18 @@ export async function syncExecuteAccepted(libraryPath: string): Promise<ApplyRes
 
 export type SyncMode = "full" | "playlist" | "modified";
 
+export type CueDestination = "hot" | "memory" | "both";
+export type KeyFormat = "original" | "camelot" | "open_key";
+
 export interface SyncOptions {
   playlist_id?: string | null;
   since_ts?: number | null;
+  // Writer-side options — forwarded into the Rust `changes::applier`.
+  cue_destination?: CueDestination;
+  keep_grids?: boolean;
+  convert_keys?: KeyFormat;
+  change_to_nearest_color?: boolean;
+  all_smartlists_to_playlists?: boolean;
 }
 
 export interface PendingChange {

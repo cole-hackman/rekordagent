@@ -1,4 +1,5 @@
-use crate::StagedChange;
+use crate::applier::{KeyFormat, SyncOptions};
+use crate::{key_format, StagedChange};
 use anyhow::{anyhow, bail};
 use rusqlite::{params, Transaction};
 use serde_json::Value;
@@ -20,7 +21,11 @@ const ALLOWED_CONTENT_FIELDS: &[&str] = &[
     "Label",
 ];
 
-pub(super) fn apply_metadata_edit(tx: &Transaction, change: &StagedChange) -> anyhow::Result<()> {
+pub(super) fn apply_metadata_edit(
+    tx: &Transaction,
+    change: &StagedChange,
+    options: &SyncOptions,
+) -> anyhow::Result<()> {
     let target_id = change
         .target_id
         .as_ref()
@@ -37,6 +42,39 @@ pub(super) fn apply_metadata_edit(tx: &Transaction, change: &StagedChange) -> an
     if !ALLOWED_CONTENT_FIELDS.contains(&field.as_str()) {
         bail!("Field {} is not in the allowlist", field);
     }
+
+    // Honor SyncOptions.convert_keys for Key edits: rewrite the staged value
+    // through the Camelot / Open-Key table. On parse failure we log + write
+    // the original — failing the whole sync because one track has a typo'd
+    // key is worse than letting it through unchanged.
+    let converted_value;
+    let new_value: &Value = if field == "Key" && options.convert_keys != KeyFormat::Original {
+        if let Value::String(s) = new_value {
+            let converted = match options.convert_keys {
+                KeyFormat::Camelot => key_format::to_camelot(s),
+                KeyFormat::OpenKey => key_format::to_open_key(s),
+                KeyFormat::Original => unreachable!(),
+            };
+            match converted {
+                Some(rewritten) => {
+                    converted_value = Value::String(rewritten);
+                    &converted_value
+                }
+                None => {
+                    tracing::warn!(
+                        original = %s,
+                        format = ?options.convert_keys,
+                        "key conversion failed; writing original value"
+                    );
+                    new_value
+                }
+            }
+        } else {
+            new_value
+        }
+    } else {
+        new_value
+    };
 
     match field.as_str() {
         "Artist" | "Genre" | "Album" | "Key" | "Label" => {
@@ -192,7 +230,12 @@ mod tests {
     fn scalar_field_updates() {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
-        apply_metadata_edit(&tx, &change("Title", Value::String("New".into()))).unwrap();
+        apply_metadata_edit(
+            &tx,
+            &change("Title", Value::String("New".into())),
+            &SyncOptions::default(),
+        )
+        .unwrap();
         let t: String = tx
             .query_row("SELECT Title FROM djmdContent WHERE ID='t1'", [], |r| {
                 r.get(0)
@@ -205,7 +248,12 @@ mod tests {
     fn fk_field_creates_genre_row() {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
-        apply_metadata_edit(&tx, &change("Genre", Value::String("Deep House".into()))).unwrap();
+        apply_metadata_edit(
+            &tx,
+            &change("Genre", Value::String("Deep House".into())),
+            &SyncOptions::default(),
+        )
+        .unwrap();
         let genre_id: String = tx
             .query_row("SELECT GenreID FROM djmdContent WHERE ID='t1'", [], |r| {
                 r.get(0)
@@ -225,8 +273,9 @@ mod tests {
     fn fk_field_null_clears_link() {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
-        apply_metadata_edit(&tx, &change("Genre", Value::String("House".into()))).unwrap();
-        apply_metadata_edit(&tx, &change("Genre", Value::Null)).unwrap();
+        let opts = SyncOptions::default();
+        apply_metadata_edit(&tx, &change("Genre", Value::String("House".into())), &opts).unwrap();
+        apply_metadata_edit(&tx, &change("Genre", Value::Null), &opts).unwrap();
         let g: Option<String> = tx
             .query_row("SELECT GenreID FROM djmdContent WHERE ID='t1'", [], |r| {
                 r.get(0)
@@ -267,7 +316,96 @@ mod tests {
     fn disallowed_field_errors() {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
-        let res = apply_metadata_edit(&tx, &change("rb_local_deleted", Value::Number(1.into())));
+        let res = apply_metadata_edit(
+            &tx,
+            &change("rb_local_deleted", Value::Number(1.into())),
+            &SyncOptions::default(),
+        );
         assert!(res.is_err());
+    }
+
+    fn key_fixture() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE djmdContent (ID TEXT PRIMARY KEY, Title TEXT, KeyID TEXT);
+             CREATE TABLE djmdKey (ID TEXT PRIMARY KEY, ScaleName TEXT);
+             INSERT INTO djmdContent (ID, Title) VALUES ('t1', 'X');",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn key_scale_for(tx: &Transaction, track_id: &str) -> Option<String> {
+        tx.query_row(
+            "SELECT k.ScaleName FROM djmdContent c JOIN djmdKey k ON c.KeyID = k.ID WHERE c.ID = ?",
+            params![track_id],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+    }
+
+    #[test]
+    fn key_conversion_camelot_rewrites_value() {
+        let mut conn = key_fixture();
+        let tx = conn.transaction().unwrap();
+        let opts = SyncOptions {
+            convert_keys: KeyFormat::Camelot,
+            ..Default::default()
+        };
+        apply_metadata_edit(
+            &tx,
+            &change("Key", Value::String("C minor".into())),
+            &opts,
+        )
+        .unwrap();
+        assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("5A"));
+    }
+
+    #[test]
+    fn key_conversion_open_key_rewrites_value() {
+        let mut conn = key_fixture();
+        let tx = conn.transaction().unwrap();
+        let opts = SyncOptions {
+            convert_keys: KeyFormat::OpenKey,
+            ..Default::default()
+        };
+        apply_metadata_edit(
+            &tx,
+            &change("Key", Value::String("C minor".into())),
+            &opts,
+        )
+        .unwrap();
+        assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("5m"));
+    }
+
+    #[test]
+    fn key_conversion_original_passthrough() {
+        let mut conn = key_fixture();
+        let tx = conn.transaction().unwrap();
+        apply_metadata_edit(
+            &tx,
+            &change("Key", Value::String("C minor".into())),
+            &SyncOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("C minor"));
+    }
+
+    #[test]
+    fn key_conversion_invalid_falls_back_to_original() {
+        let mut conn = key_fixture();
+        let tx = conn.transaction().unwrap();
+        let opts = SyncOptions {
+            convert_keys: KeyFormat::Camelot,
+            ..Default::default()
+        };
+        apply_metadata_edit(
+            &tx,
+            &change("Key", Value::String("Banana".into())),
+            &opts,
+        )
+        .unwrap();
+        // Unparseable input → write the original string rather than fail.
+        assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("Banana"));
     }
 }

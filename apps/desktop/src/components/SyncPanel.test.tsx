@@ -59,11 +59,13 @@ describe("SyncPanel", () => {
     render_();
     await screen.findByText("Some Title");
     expect(screen.getByText(/1 of 1 included/)).toBeInTheDocument();
-    // First *enabled* checkbox is the row's include toggle (options block
-    // contains a disabled checkbox).
-    const rowCheckbox = screen
-      .getAllByRole("checkbox")
-      .find((el) => !(el as HTMLInputElement).disabled)!;
+    // The row's include toggle sits inside the pending-changes table; the
+    // keep-grids options checkbox is outside any <table>.
+    const table = screen.getByRole("table");
+    const rowCheckbox = table.querySelector(
+      "input[type=checkbox]",
+    ) as HTMLInputElement;
+    expect(rowCheckbox).toBeTruthy();
     await userEvent.click(rowCheckbox);
     expect(screen.getByText(/0 of 1 included/)).toBeInTheDocument();
   });
@@ -80,6 +82,36 @@ describe("SyncPanel", () => {
       "/db",
       "full",
       expect.any(Object),
+      ["c1"],
+    );
+  });
+
+  it("forwards non-default cue_destination, keep_grids, and convert_keys to syncExecute", async () => {
+    vi.mocked(syncCheck).mockResolvedValue({ locked: false, pending_changes: 1 });
+    vi.mocked(syncPreview).mockResolvedValue([ROW]);
+    vi.mocked(syncExecute).mockResolvedValue({ applied: ["c1"], failed: [] });
+    render_();
+    await screen.findByText("Some Title");
+
+    // Flip all three options off their defaults.
+    const cueSelect = screen.getByRole("combobox", { name: /Cue destination/i });
+    await userEvent.selectOptions(cueSelect, "both");
+    const keysSelect = screen.getByRole("combobox", { name: /Convert keys/i });
+    await userEvent.selectOptions(keysSelect, "camelot");
+    const keepGridsBox = screen.getByRole("checkbox", { name: /grids/i });
+    await userEvent.click(keepGridsBox);
+
+    await userEvent.click(screen.getByRole("button", { name: /Apply 1 change/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Apply" }));
+
+    expect(syncExecute).toHaveBeenCalledWith(
+      "/db",
+      "full",
+      expect.objectContaining({
+        cue_destination: "both",
+        keep_grids: true,
+        convert_keys: "camelot",
+      }),
       ["c1"],
     );
   });

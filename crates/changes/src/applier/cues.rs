@@ -1,4 +1,5 @@
 use super::tracks::json_to_sql;
+use crate::applier::{CueDestination, SyncOptions};
 use crate::StagedChange;
 use anyhow::{anyhow, bail};
 use rusqlite::{params, Transaction};
@@ -9,7 +10,20 @@ const ALLOWED_CUE_FIELDS: &[&str] = &["InMsec", "OutMsec", "Kind", "Color", "Com
 /// `TrackAddCue`:
 /// - `target_id` = content (track) ID
 /// - `new_value` = JSON object `{in_msec, out_msec?, kind?, color?, commnt?}`
-pub(super) fn apply_add_cue(tx: &Transaction, change: &StagedChange) -> anyhow::Result<()> {
+///
+/// `options.cue_destination` controls which `djmdCue.Kind` slot is written:
+///   - `Hot` (default)  → write a hot-cue row (Kind = staged value if 1..=8, else 1).
+///   - `Memory`         → force Kind = 0 (memory cue).
+///   - `Both`           → insert both a memory row and a hot row.
+///
+/// `Kind` values per `crates/rekordbox-db/src/types.rs::CueKind::from_db`:
+///   0   = MemoryCue
+///   1–8 = HotCue (slot number)
+pub(super) fn apply_add_cue(
+    tx: &Transaction,
+    change: &StagedChange,
+    options: &SyncOptions,
+) -> anyhow::Result<()> {
     let content_id = change
         .target_id
         .as_ref()
@@ -22,21 +36,34 @@ pub(super) fn apply_add_cue(tx: &Transaction, change: &StagedChange) -> anyhow::
         .as_object()
         .ok_or_else(|| anyhow!("new_value must be an object"))?;
 
-    let id = uuid::Uuid::new_v4().to_string();
     let in_msec = obj
         .get("in_msec")
         .and_then(Value::as_i64)
         .ok_or_else(|| anyhow!("in_msec required"))?;
     let out_msec = obj.get("out_msec").and_then(Value::as_i64);
-    let kind = obj.get("kind").and_then(Value::as_i64).unwrap_or(0);
+    let staged_kind = obj.get("kind").and_then(Value::as_i64).unwrap_or(0);
     let color = obj.get("color").and_then(Value::as_i64).unwrap_or(-1);
     let commnt = obj.get("commnt").and_then(Value::as_str);
 
-    tx.execute(
-        "INSERT INTO djmdCue (ID, ContentID, InMsec, OutMsec, Kind, Color, Commnt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-        params![id, content_id, in_msec, out_msec, kind, color, commnt],
-    )?;
+    let hot_kind = if (1..=8).contains(&staged_kind) {
+        staged_kind
+    } else {
+        1
+    };
+    let kinds_to_write: Vec<i64> = match options.cue_destination {
+        CueDestination::Hot => vec![hot_kind],
+        CueDestination::Memory => vec![0],
+        CueDestination::Both => vec![0, hot_kind],
+    };
+
+    for kind in kinds_to_write {
+        let id = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO djmdCue (ID, ContentID, InMsec, OutMsec, Kind, Color, Commnt)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params![id, content_id, in_msec, out_msec, kind, color, commnt],
+        )?;
+    }
     Ok(())
 }
 
@@ -121,6 +148,7 @@ mod tests {
                 None,
                 json!({"in_msec": 12345, "kind": 0, "color": 5, "commnt": "intro"}),
             ),
+            &SyncOptions::default(),
         )
         .unwrap();
         let (in_msec, commnt): (i64, String) = tx
@@ -132,6 +160,86 @@ mod tests {
             .unwrap();
         assert_eq!(in_msec, 12345);
         assert_eq!(commnt, "intro");
+    }
+
+    #[test]
+    fn add_cue_memory_destination_forces_kind_zero() {
+        let mut conn = fixture();
+        let tx = conn.transaction().unwrap();
+        let opts = SyncOptions {
+            cue_destination: CueDestination::Memory,
+            ..Default::default()
+        };
+        apply_add_cue(
+            &tx,
+            &change(
+                ChangeKind::TrackAddCue,
+                Some("track1"),
+                None,
+                json!({"in_msec": 100, "kind": 3}),
+            ),
+            &opts,
+        )
+        .unwrap();
+        let kind: i64 = tx
+            .query_row("SELECT Kind FROM djmdCue WHERE ContentID='track1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(kind, 0);
+    }
+
+    #[test]
+    fn add_cue_both_inserts_two_rows() {
+        let mut conn = fixture();
+        let tx = conn.transaction().unwrap();
+        let opts = SyncOptions {
+            cue_destination: CueDestination::Both,
+            ..Default::default()
+        };
+        apply_add_cue(
+            &tx,
+            &change(
+                ChangeKind::TrackAddCue,
+                Some("track1"),
+                None,
+                json!({"in_msec": 100, "kind": 4}),
+            ),
+            &opts,
+        )
+        .unwrap();
+        let mut kinds: Vec<i64> = tx
+            .prepare("SELECT Kind FROM djmdCue WHERE ContentID='track1' ORDER BY Kind")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        kinds.sort();
+        assert_eq!(kinds, vec![0, 4]);
+    }
+
+    #[test]
+    fn add_cue_hot_preserves_staged_slot() {
+        let mut conn = fixture();
+        let tx = conn.transaction().unwrap();
+        apply_add_cue(
+            &tx,
+            &change(
+                ChangeKind::TrackAddCue,
+                Some("track1"),
+                None,
+                json!({"in_msec": 100, "kind": 7}),
+            ),
+            &SyncOptions::default(),
+        )
+        .unwrap();
+        let kind: i64 = tx
+            .query_row("SELECT Kind FROM djmdCue WHERE ContentID='track1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(kind, 7);
     }
 
     #[test]

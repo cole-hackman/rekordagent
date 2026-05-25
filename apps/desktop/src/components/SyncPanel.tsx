@@ -4,6 +4,8 @@ import {
   syncCheck,
   syncExecute,
   syncPreview,
+  type CueDestination,
+  type KeyFormat,
   type PendingChange,
   type SyncMode,
   type SyncOptions,
@@ -29,14 +31,19 @@ export function SyncPanel({ libraryPath }: Props) {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
 
-  // Phase-A-stubbed options
-  const [cueDestination, setCueDestination] = useState<"cues" | "memory" | "both">("cues");
+  // Sub-Plan 6: wired end-to-end through `changes::applier::SyncOptions`.
+  const [cueDestination, setCueDestination] = useState<CueDestination>("hot");
   const [keepGrids, setKeepGrids] = useState(false);
-  const [convertKeys, setConvertKeys] = useState<"original" | "camelot" | "open_key">("original");
+  const [convertKeys, setConvertKeys] = useState<KeyFormat>("original");
 
   const options = useMemo<SyncOptions>(
-    () => ({ playlist_id: mode === "playlist" ? playlistId : null }),
-    [mode, playlistId],
+    () => ({
+      playlist_id: mode === "playlist" ? playlistId : null,
+      cue_destination: cueDestination,
+      keep_grids: keepGrids,
+      convert_keys: convertKeys,
+    }),
+    [mode, playlistId, cueDestination, keepGrids, convertKeys],
   );
 
   const refresh = useCallback(async () => {
@@ -166,27 +173,25 @@ export function SyncPanel({ libraryPath }: Props) {
           </label>
         )}
 
-        <label className="flex flex-col gap-1" title="Stubbed — Phase A+1 wires cue destination">
+        <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wide text-ink-muted">Cue destination</span>
           <select
             value={cueDestination}
-            onChange={(e) => setCueDestination(e.target.value as typeof cueDestination)}
-            disabled
-            className="rounded border border-edge bg-surface px-2 py-1 text-ink opacity-50"
+            onChange={(e) => setCueDestination(e.target.value as CueDestination)}
+            className="rounded border border-edge bg-surface px-2 py-1 text-ink"
           >
-            <option value="cues">Hot cues (1–8)</option>
+            <option value="hot">Hot cues (1–8)</option>
             <option value="memory">Memory cues</option>
             <option value="both">Both</option>
           </select>
         </label>
 
-        <label className="flex flex-col gap-1" title="Stubbed — Phase A+1 wires key conversion">
+        <label className="flex flex-col gap-1">
           <span className="text-xs uppercase tracking-wide text-ink-muted">Convert keys</span>
           <select
             value={convertKeys}
-            onChange={(e) => setConvertKeys(e.target.value as typeof convertKeys)}
-            disabled
-            className="rounded border border-edge bg-surface px-2 py-1 text-ink opacity-50"
+            onChange={(e) => setConvertKeys(e.target.value as KeyFormat)}
+            className="rounded border border-edge bg-surface px-2 py-1 text-ink"
           >
             <option value="original">Original</option>
             <option value="camelot">Camelot</option>
@@ -194,17 +199,13 @@ export function SyncPanel({ libraryPath }: Props) {
           </select>
         </label>
 
-        <label
-          className="col-span-2 flex items-center gap-2 text-ink-muted"
-          title="Stubbed — Phase A+1 honors this flag in cue/grid arms"
-        >
+        <label className="col-span-2 flex items-center gap-2 text-ink">
           <input
             type="checkbox"
             checked={keepGrids}
             onChange={(e) => setKeepGrids(e.target.checked)}
-            disabled
           />
-          Don&apos;t touch my grids (skip BPM / beatgrid writes)
+          Don&apos;t touch my grids (skip BPM writes)
         </label>
       </div>
 
