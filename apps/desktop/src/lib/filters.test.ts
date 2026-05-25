@@ -1,12 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   applyFilters,
   EMPTY_FILTERS,
   activeFilterCount,
   distinctValues,
   isInboxTrack,
+  loadPersistedFilters,
+  persistFilters,
   trackMissesField,
   type FilterContext,
+  type Filters,
 } from "./filters";
 import type { Track } from "../types";
 
@@ -283,6 +286,137 @@ describe("trackMissesField", () => {
     expect(trackMissesField(track({ bpm: NaN }), "bpm")).toBe(true);
     expect(trackMissesField(track({ bpm: 128 }), "bpm")).toBe(false);
   });
+});
+
+describe("persistFilters / loadPersistedFilters", () => {
+  const STORAGE: Record<string, string> = {};
+  const realStorage = globalThis.localStorage;
+
+  beforeEach(() => {
+    for (const k of Object.keys(STORAGE)) delete STORAGE[k];
+    const mock: Storage = {
+      getItem: (k) => (k in STORAGE ? STORAGE[k] : null),
+      setItem: (k, v) => {
+        STORAGE[k] = v;
+      },
+      removeItem: (k) => {
+        delete STORAGE[k];
+      },
+      clear: () => {
+        for (const k of Object.keys(STORAGE)) delete STORAGE[k];
+      },
+      key: (i) => Object.keys(STORAGE)[i] ?? null,
+      get length() {
+        return Object.keys(STORAGE).length;
+      },
+    };
+    Object.defineProperty(globalThis, "localStorage", {
+      value: mock,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: realStorage,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it("round-trips persisted state for a given library", () => {
+    const filters: Filters = {
+      ...EMPTY_FILTERS,
+      bpmMin: 120,
+      bpmMax: 130,
+      keys: ["5A", "8A"],
+      genres: ["Techno"],
+      hasCues: "yes",
+      tagIds: ["a", "b"],
+      tagMatchAll: true,
+    };
+    persistFilters(filters, "/Users/dj/lib-a");
+    const loaded = loadPersistedFilters("/Users/dj/lib-a");
+    expect(loaded.bpmMin).toBe(120);
+    expect(loaded.bpmMax).toBe(130);
+    expect(loaded.keys).toEqual(["5A", "8A"]);
+    expect(loaded.genres).toEqual(["Techno"]);
+    expect(loaded.hasCues).toBe("yes");
+    expect(loaded.tagIds).toEqual(["a", "b"]);
+    expect(loaded.tagMatchAll).toBe(true);
+  });
+
+  it("scopes storage by libraryPath — different libraries don't bleed", () => {
+    persistFilters(
+      { ...EMPTY_FILTERS, bpmMin: 100, keys: ["1A"] },
+      "/lib/a",
+    );
+    const a = loadPersistedFilters("/lib/a");
+    const b = loadPersistedFilters("/lib/b");
+    expect(a.bpmMin).toBe(100);
+    expect(a.keys).toEqual(["1A"]);
+    expect(b).toEqual(EMPTY_FILTERS);
+  });
+
+  it("resets query and missingFiles on reload", () => {
+    persistFilters(
+      {
+        ...EMPTY_FILTERS,
+        query: "ephemeral search",
+        missingFiles: true,
+        bpmMin: 120,
+      },
+      "/lib/a",
+    );
+    const loaded = loadPersistedFilters("/lib/a");
+    expect(loaded.query).toBe("");
+    expect(loaded.missingFiles).toBe(false);
+    expect(loaded.bpmMin).toBe(120);
+  });
+
+  it("null libraryPath uses the legacy un-keyed storage key", () => {
+    // Seed legacy data directly.
+    globalThis.localStorage.setItem(
+      "decks.filters.v1",
+      JSON.stringify({ bpmMin: 90 }),
+    );
+    const loaded = loadPersistedFilters(null);
+    expect(loaded.bpmMin).toBe(90);
+    // And the keyed variant doesn't pick it up.
+    expect(loadPersistedFilters("/lib/x").bpmMin).toBeNull();
+  });
+
+  it("does not throw when localStorage.setItem throws (e.g. quota)", () => {
+    const throwingStorage: Storage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("QuotaExceededError");
+      },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 0,
+    };
+    Object.defineProperty(globalThis, "localStorage", {
+      value: throwingStorage,
+      configurable: true,
+      writable: true,
+    });
+    expect(() =>
+      persistFilters({ ...EMPTY_FILTERS, bpmMin: 120 }, "/lib/a"),
+    ).not.toThrow();
+  });
+
+  it("does not throw when localStorage.getItem returns malformed JSON", () => {
+    globalThis.localStorage.setItem(
+      "decks.filters.v1::/lib/a",
+      "{not json",
+    );
+    expect(() => loadPersistedFilters("/lib/a")).not.toThrow();
+    expect(loadPersistedFilters("/lib/a")).toEqual(EMPTY_FILTERS);
+  });
+
 });
 
 describe("distinctValues", () => {

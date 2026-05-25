@@ -55,15 +55,23 @@ export const EMPTY_FILTERS: Filters = {
   tagMatchAll: false,
 };
 
-const STORAGE_KEY = "decks.filters.v1";
+const STORAGE_KEY_BASE = "decks.filters.v1";
 
-/** Restore previously-persisted filter state. Always returns a value, even on
- *  parse failure. `query` and `missingFiles` are deliberately reset so reloads
- *  don't strand the user inside a heavy scan or a stale search term. */
-export function loadPersistedFilters(): Filters {
+/** Compute the localStorage key for a given library. Null falls back to the
+ *  legacy un-keyed key so pre-existing data still loads on first run. */
+function storageKeyFor(libraryPath: string | null): string {
+  if (libraryPath === null) return STORAGE_KEY_BASE;
+  return `${STORAGE_KEY_BASE}::${libraryPath}`;
+}
+
+/** Restore previously-persisted filter state for the given library. Always
+ *  returns a value, even on parse failure. `query` and `missingFiles` are
+ *  deliberately reset so reloads don't strand the user inside a heavy scan
+ *  or a stale search term. */
+export function loadPersistedFilters(libraryPath: string | null): Filters {
   if (typeof window === "undefined") return EMPTY_FILTERS;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKeyFor(libraryPath));
     if (!raw) return EMPTY_FILTERS;
     const parsed = JSON.parse(raw) as Partial<Filters>;
     return {
@@ -77,13 +85,19 @@ export function loadPersistedFilters(): Filters {
   }
 }
 
-export function persistFilters(filters: Filters): void {
+export function persistFilters(
+  filters: Filters,
+  libraryPath: string | null,
+): void {
   if (typeof window === "undefined") return;
   try {
     const { query: _query, missingFiles: _missingFiles, ...rest } = filters;
     void _query;
     void _missingFiles;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+    window.localStorage.setItem(
+      storageKeyFor(libraryPath),
+      JSON.stringify(rest),
+    );
   } catch {
     // Storage may be full or disabled — silent fail is fine.
   }

@@ -58,11 +58,20 @@ export default function App() {
   const { libraryPath, trackCount, theme, setLibraryConfigured, setTheme } =
     useAppStore();
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<Filters>(loadPersistedFilters);
+  const [filters, setFilters] = useState<Filters>(() =>
+    loadPersistedFilters(null),
+  );
+
+  // When the active library changes (including the initial async load), swap
+  // in that library's persisted filters. Persist on every change keyed by the
+  // current library.
+  useEffect(() => {
+    setFilters(loadPersistedFilters(libraryPath));
+  }, [libraryPath]);
 
   useEffect(() => {
-    persistFilters(filters);
-  }, [filters]);
+    persistFilters(filters, libraryPath);
+  }, [filters, libraryPath]);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
