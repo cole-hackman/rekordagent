@@ -127,7 +127,7 @@ impl CacheDb {
             let sql = format!(
                 "SELECT track_uri, energy, created_at FROM audio_features
                  WHERE track_uri IN ({placeholders}) AND energy IS NOT NULL
-                 ORDER BY created_at ASC"
+                 ORDER BY created_at DESC"
             );
             let mut stmt = self.conn.prepare(&sql)?;
             let params_iter: Vec<&dyn rusqlite::ToSql> =
@@ -139,9 +139,10 @@ impl CacheDb {
             })?;
             for r in rows {
                 let (uri, energy) = r?;
-                // Ascending order means later inserts overwrite earlier ones —
-                // last write wins, which is the most recent analyzer version.
-                out.insert(uri, energy);
+                // Descending order means the first row seen for each URI is the
+                // newest; `or_insert` keeps it and ignores older duplicates.
+                // This stays correct even if a `LIMIT` is added later.
+                out.entry(uri).or_insert(energy);
             }
         }
         Ok(out)
@@ -1054,6 +1055,32 @@ mod tests {
             .unwrap();
         assert!((v1.bpm.unwrap() - 128.0).abs() < 0.001);
         assert!((v2.bpm.unwrap() - 130.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn get_energy_by_uris_returns_newest_when_multiple_rows_exist() {
+        let db = CacheDb::open_in_memory().unwrap();
+        // Two analyzer versions for the same URI; insert the older one second
+        // to ensure ordering is driven by `created_at`, not insertion order.
+        db.conn
+            .execute(
+                "INSERT INTO audio_features (track_uri, analyzer_version, energy, created_at)
+                 VALUES (?1, 'v2', 0.91, 2000)",
+                rusqlite::params!["file:///newest.mp3"],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO audio_features (track_uri, analyzer_version, energy, created_at)
+                 VALUES (?1, 'v1', 0.10, 1000)",
+                rusqlite::params!["file:///newest.mp3"],
+            )
+            .unwrap();
+        let map = db
+            .get_energy_by_uris(&["file:///newest.mp3"])
+            .unwrap();
+        let energy = map.get("file:///newest.mp3").copied().expect("present");
+        assert!((energy - 0.91).abs() < 1e-9, "expected newest energy, got {energy}");
     }
 
     #[test]
