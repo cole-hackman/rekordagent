@@ -2,6 +2,13 @@ use track_matcher::csv_input::parse_csv;
 use track_matcher::{match_all, MatchCandidate, MatchStatus};
 
 #[test]
+fn parse_headers_handles_quoted_commas() {
+    let input = "\"Last, First\",artist\nDoe Jane,Foo\n";
+    let h = track_matcher::csv_input::parse_headers(input).unwrap();
+    assert_eq!(h, vec!["Last, First".to_string(), "artist".to_string()]);
+}
+
+#[test]
 fn parses_simple_two_column_csv() {
     let input = "title,artist\nStrobe,Deadmau5\nGhosts 'n' Stuff,Deadmau5\n";
     let candidates = parse_csv(input, "title", Some("artist")).unwrap();

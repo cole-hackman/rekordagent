@@ -1896,6 +1896,11 @@ fn parse_csv_for_matcher(
 }
 
 #[tauri::command]
+fn parse_csv_headers_for_matcher(content: String) -> Result<Vec<String>, String> {
+    track_matcher::csv_input::parse_headers(&content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn create_playlist_from_tracks(
     app: tauri::AppHandle,
     library_path: String,
@@ -2493,6 +2498,7 @@ pub fn run() {
             sync_execute_accepted,
             match_tracks,
             parse_csv_for_matcher,
+            parse_csv_headers_for_matcher,
             create_playlist_from_tracks,
             stage_track_delete,
             smart_fix_preview,

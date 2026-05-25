@@ -3,6 +3,7 @@ import {
   createPlaylistFromTracks,
   matchTracks,
   parseCsvForMatcher,
+  parseCsvHeadersForMatcher,
   type MatchInput,
   type MatchResult,
 } from "../ipc";
@@ -66,10 +67,26 @@ export function TrackMatcherView({ libraryPath, onGoToSync }: Props) {
     const f = e.target.files?.[0];
     if (!f) return;
     const text = await f.text();
-    // Extract headers + row count locally for the column-mapping UI without
-    // committing to a mapping yet. Backend re-parses authoritatively at match-time.
-    const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-    const headers = firstLine.length > 0 ? firstLine.split(",").map((h) => h.trim()) : [];
+    // Extract headers via the backend RFC-4180 CSV parser so quoted commas in
+    // header names (e.g. `"Last, First",artist`) are handled correctly. Backend
+    // re-parses authoritatively at match-time.
+    let headers: string[];
+    try {
+      headers = await parseCsvHeadersForMatcher(text);
+    } catch (err) {
+      toast({
+        variant: "error",
+        message: "Failed to parse CSV headers",
+        detail: String(err),
+      });
+      return;
+    }
+    if (headers.length === 0) {
+      // Empty/headerless CSV — fall back to treating the file as one input per line.
+      setPasted(text);
+      setSource("paste");
+      return;
+    }
     const nonEmpty = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
     setCsvText(text);
     setCsvHeaders(headers);

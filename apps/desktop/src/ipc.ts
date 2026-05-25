@@ -654,6 +654,12 @@ export async function parseCsvForMatcher(
   });
 }
 
+export async function parseCsvHeadersForMatcher(
+  content: string,
+): Promise<string[]> {
+  return invoke<string[]>("parse_csv_headers_for_matcher", { content });
+}
+
 export async function createPlaylistFromTracks(
   libraryPath: string,
   name: string,

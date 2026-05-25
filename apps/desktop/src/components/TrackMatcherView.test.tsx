@@ -2,13 +2,19 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TrackMatcherView } from "./TrackMatcherView";
-import { createPlaylistFromTracks, matchTracks, parseCsvForMatcher } from "../ipc";
+import {
+  createPlaylistFromTracks,
+  matchTracks,
+  parseCsvForMatcher,
+  parseCsvHeadersForMatcher,
+} from "../ipc";
 import { WithProviders } from "../test-utils/providers";
 
 vi.mock("../ipc", () => ({
   matchTracks: vi.fn(),
   createPlaylistFromTracks: vi.fn(),
   parseCsvForMatcher: vi.fn(),
+  parseCsvHeadersForMatcher: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -64,6 +70,7 @@ describe("TrackMatcherView", () => {
   });
 
   it("CSV upload shows column mapping UI and delegates parse to backend", async () => {
+    vi.mocked(parseCsvHeadersForMatcher).mockResolvedValue(["title", "artist"]);
     vi.mocked(parseCsvForMatcher).mockResolvedValue([
       { title: "Strobe", artist: "Deadmau5" },
     ]);
