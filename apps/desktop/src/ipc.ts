@@ -419,6 +419,9 @@ export interface SyncCheckResult {
 export interface ApplyResult {
   applied: string[];
   failed: [string, string][];
+  /** Non-fatal warnings (e.g. unconvertible key values). Optional so older
+   *  Tauri builds that pre-date the field still deserialize cleanly. */
+  warnings?: string[];
 }
 
 export async function syncCheck(libraryPath: string): Promise<SyncCheckResult> {

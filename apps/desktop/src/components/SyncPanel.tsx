@@ -109,10 +109,28 @@ export function SyncPanel({ libraryPath }: Props) {
       const res = await syncExecute(libraryPath, mode, options, includedIds);
       const failed = res.failed.length;
       const applied = res.applied.length;
+      const warnings = res.warnings ?? [];
+      // Surface non-fatal warnings (e.g. unconvertible key values that were
+      // written as the original string instead of Camelot/OpenKey). These
+      // changes are still counted in `applied`, so the user otherwise would
+      // see no signal that K of N keys silently failed to convert.
+      const warningCount = warnings.length;
+      const messageSuffix =
+        (failed > 0 ? `, ${failed} failed` : "") +
+        (warningCount > 0 ? `, ${warningCount} warning${warningCount === 1 ? "" : "s"}` : "");
+      const detailParts: string[] = [];
+      if (failed > 0) {
+        detailParts.push(`First failure: ${res.failed[0]?.[1] ?? "unknown"}`);
+      }
+      if (warningCount > 0) {
+        const shown = warnings.slice(0, 3).join("; ");
+        const more = warningCount > 3 ? ` (+${warningCount - 3} more)` : "";
+        detailParts.push(`Warnings: ${shown}${more}`);
+      }
       toast({
-        variant: failed > 0 ? "warn" : "success",
-        message: `Applied ${applied} change(s)${failed > 0 ? `, ${failed} failed` : ""}.`,
-        detail: failed > 0 ? `First failure: ${res.failed[0]?.[1] ?? "unknown"}` : undefined,
+        variant: failed > 0 || warningCount > 0 ? "warn" : "success",
+        message: `Applied ${applied} change(s)${messageSuffix}.`,
+        detail: detailParts.length > 0 ? detailParts.join(" • ") : undefined,
       });
       await refresh();
     } catch (e) {

@@ -1663,10 +1663,7 @@ async fn sync_execute(
             .collect();
 
         if to_apply.is_empty() {
-            return Ok(changes::applier::ApplyResult {
-                applied: vec![],
-                failed: vec![],
-            });
+            return Ok(changes::applier::ApplyResult::default());
         }
 
         let session_state = app.state::<std::sync::Mutex<decks_core::rekordbox_db::WriteSession>>();

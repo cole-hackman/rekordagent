@@ -10,10 +10,17 @@ mod cues;
 mod playlists;
 mod tracks;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ApplyResult {
     pub applied: Vec<String>,
     pub failed: Vec<(String, String)>,
+    /// Non-fatal warnings accumulated during apply (e.g. a key value that
+    /// could not be converted to the requested Camelot/OpenKey format and was
+    /// written as the original string). The change is still counted as
+    /// `applied`; this lets the UI surface "N of M actually converted" without
+    /// failing the whole sync.
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -74,6 +81,7 @@ pub fn apply_with_options(
 ) -> Result<ApplyResult, ApplyError> {
     let mut applied = Vec::new();
     let mut failed = Vec::new();
+    let mut warnings = Vec::new();
     for change in changes {
         // `keep_grids` short-circuit: skip BPM edits with a no-op success so
         // the change is still marked exported (it was a user-accepted change,
@@ -86,12 +94,16 @@ pub fn apply_with_options(
             applied.push(change.id.clone());
             continue;
         }
-        match apply_single(tx, change, options) {
+        match apply_single(tx, change, options, &mut warnings) {
             Ok(_) => applied.push(change.id.clone()),
             Err(e) => failed.push((change.id.clone(), e.to_string())),
         }
     }
-    Ok(ApplyResult { applied, failed })
+    Ok(ApplyResult {
+        applied,
+        failed,
+        warnings,
+    })
 }
 
 fn is_grid_change(change: &StagedChange) -> bool {
@@ -112,9 +124,12 @@ fn apply_single(
     tx: &Transaction,
     change: &StagedChange,
     options: &SyncOptions,
+    warnings: &mut Vec<String>,
 ) -> anyhow::Result<()> {
     match change.kind {
-        ChangeKind::TrackMetadataEdit => tracks::apply_metadata_edit(tx, change, options),
+        ChangeKind::TrackMetadataEdit => {
+            tracks::apply_metadata_edit(tx, change, options, warnings)
+        }
         ChangeKind::TrackDelete => tracks::apply_delete(tx, change),
         ChangeKind::TrackAddCue => cues::apply_add_cue(tx, change, options),
         ChangeKind::CueMetadataEdit => cues::apply_metadata_edit(tx, change),

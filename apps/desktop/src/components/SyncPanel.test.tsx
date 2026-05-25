@@ -115,4 +115,25 @@ describe("SyncPanel", () => {
       ["c1"],
     );
   });
+
+  it("surfaces ApplyResult.warnings (e.g. key conversion failures) in the toast detail", async () => {
+    vi.mocked(syncCheck).mockResolvedValue({ locked: false, pending_changes: 1 });
+    vi.mocked(syncPreview).mockResolvedValue([ROW]);
+    vi.mocked(syncExecute).mockResolvedValue({
+      applied: ["c1"],
+      failed: [],
+      warnings: ["Failed to convert key for track t1: 'C♭ Major' could not be mapped to Camelot"],
+    });
+    render_();
+    await screen.findByText("Some Title");
+    await userEvent.click(screen.getByRole("button", { name: /Apply 1 change/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Apply" }));
+
+    // The toast message reflects the warning count and the detail line shows
+    // the underlying message verbatim.
+    expect(await screen.findByText(/Applied 1 change\(s\), 1 warning\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/could not be mapped to Camelot/),
+    ).toBeInTheDocument();
+  });
 });

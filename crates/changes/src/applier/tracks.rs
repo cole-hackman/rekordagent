@@ -25,6 +25,7 @@ pub(super) fn apply_metadata_edit(
     tx: &Transaction,
     change: &StagedChange,
     options: &SyncOptions,
+    warnings: &mut Vec<String>,
 ) -> anyhow::Result<()> {
     let target_id = change
         .target_id
@@ -66,6 +67,15 @@ pub(super) fn apply_metadata_edit(
                         format = ?options.convert_keys,
                         "key conversion failed; writing original value"
                     );
+                    let format_label = match options.convert_keys {
+                        KeyFormat::Camelot => "Camelot",
+                        KeyFormat::OpenKey => "OpenKey",
+                        KeyFormat::Original => unreachable!(),
+                    };
+                    warnings.push(format!(
+                        "Failed to convert key for track {}: '{}' could not be mapped to {}",
+                        target_id, s, format_label
+                    ));
                     new_value
                 }
             }
@@ -234,6 +244,7 @@ mod tests {
             &tx,
             &change("Title", Value::String("New".into())),
             &SyncOptions::default(),
+            &mut Vec::new(),
         )
         .unwrap();
         let t: String = tx
@@ -252,6 +263,7 @@ mod tests {
             &tx,
             &change("Genre", Value::String("Deep House".into())),
             &SyncOptions::default(),
+            &mut Vec::new(),
         )
         .unwrap();
         let genre_id: String = tx
@@ -274,8 +286,14 @@ mod tests {
         let mut conn = fixture();
         let tx = conn.transaction().unwrap();
         let opts = SyncOptions::default();
-        apply_metadata_edit(&tx, &change("Genre", Value::String("House".into())), &opts).unwrap();
-        apply_metadata_edit(&tx, &change("Genre", Value::Null), &opts).unwrap();
+        apply_metadata_edit(
+            &tx,
+            &change("Genre", Value::String("House".into())),
+            &opts,
+            &mut Vec::new(),
+        )
+        .unwrap();
+        apply_metadata_edit(&tx, &change("Genre", Value::Null), &opts, &mut Vec::new()).unwrap();
         let g: Option<String> = tx
             .query_row("SELECT GenreID FROM djmdContent WHERE ID='t1'", [], |r| {
                 r.get(0)
@@ -320,6 +338,7 @@ mod tests {
             &tx,
             &change("rb_local_deleted", Value::Number(1.into())),
             &SyncOptions::default(),
+            &mut Vec::new(),
         );
         assert!(res.is_err());
     }
@@ -356,6 +375,7 @@ mod tests {
             &tx,
             &change("Key", Value::String("C minor".into())),
             &opts,
+            &mut Vec::new(),
         )
         .unwrap();
         assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("5A"));
@@ -373,6 +393,7 @@ mod tests {
             &tx,
             &change("Key", Value::String("C minor".into())),
             &opts,
+            &mut Vec::new(),
         )
         .unwrap();
         assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("5m"));
@@ -386,6 +407,7 @@ mod tests {
             &tx,
             &change("Key", Value::String("C minor".into())),
             &SyncOptions::default(),
+            &mut Vec::new(),
         )
         .unwrap();
         assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("C minor"));
@@ -399,13 +421,46 @@ mod tests {
             convert_keys: KeyFormat::Camelot,
             ..Default::default()
         };
+        let mut warnings = Vec::new();
         apply_metadata_edit(
             &tx,
             &change("Key", Value::String("Banana".into())),
             &opts,
+            &mut warnings,
         )
         .unwrap();
         // Unparseable input → write the original string rather than fail.
         assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("Banana"));
+        // …and emit a warning describing the failure so the UI can surface it.
+        assert_eq!(warnings.len(), 1);
+        assert!(
+            warnings[0].contains("Banana") && warnings[0].contains("Camelot"),
+            "unexpected warning: {}",
+            warnings[0]
+        );
+    }
+
+    #[test]
+    fn apply_with_options_surfaces_key_conversion_warning() {
+        // End-to-end: a key change with an unconvertible value should land in
+        // `ApplyResult.warnings` while still being counted as applied.
+        let mut conn = key_fixture();
+        let tx = conn.transaction().unwrap();
+        let opts = SyncOptions {
+            convert_keys: KeyFormat::Camelot,
+            ..Default::default()
+        };
+        let change = change("Key", Value::String("C\u{266D} Major".into()));
+        let res = crate::applier::apply_with_options(&tx, &[change], &opts).unwrap();
+        assert_eq!(res.applied.len(), 1);
+        assert!(res.failed.is_empty());
+        assert_eq!(res.warnings.len(), 1);
+        assert!(
+            res.warnings[0].contains("C\u{266D} Major"),
+            "unexpected warning: {}",
+            res.warnings[0]
+        );
+        // And the original value lands in the DB.
+        assert_eq!(key_scale_for(&tx, "t1").as_deref(), Some("C\u{266D} Major"));
     }
 }
