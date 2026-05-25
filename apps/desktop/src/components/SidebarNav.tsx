@@ -12,6 +12,7 @@ export type WorkspaceView =
   | "genre-cleanup"
   | "artist-cleanup"
   | "smart-fixes"
+  | "duplicates"
   | "matcher"
   | "sync"
   | "analytics"
@@ -113,6 +114,16 @@ const NAV_ITEMS: NavItem[] = [
         <path d="M11 1.5L12 4l2.5 1L12 6l-1 2.5L10 6 7.5 5 10 4l1-2.5z" />
         <path d="M5 7.5L5.6 9l1.5.6L5.6 10.2 5 11.7l-.6-1.5L2.9 9.6 4.4 9 5 7.5z" />
         <path d="M9 12.5l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4.4-1z" />
+      </svg>
+    ),
+  },
+  {
+    id: "duplicates",
+    label: "Duplicates",
+    icon: (
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+        <rect x="2" y="2" width="8" height="8" rx="1" />
+        <rect x="6" y="6" width="8" height="8" rx="1" />
       </svg>
     ),
   },

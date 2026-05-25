@@ -14,6 +14,7 @@ import { CleanupPanel } from "./components/CleanupPanel";
 import { SyncPanel } from "./components/SyncPanel";
 import { SmartFixesPanel } from "./components/SmartFixesPanel";
 import { TrackMatcherView } from "./components/TrackMatcherView";
+import { DuplicatesView } from "./components/DuplicatesView";
 import { IncomingView } from "./components/IncomingView";
 import { ArchiveView } from "./components/ArchiveView";
 import { StatusBar } from "./components/StatusBar";
@@ -492,6 +493,16 @@ export default function App() {
             <SmartFixesPanel
               libraryPath={libraryPath}
               onGoToSync={() => setCurrentView("sync")}
+            />
+          )}
+          {currentView === "duplicates" && (
+            <DuplicatesView
+              libraryPath={libraryPath}
+              onOpenInspector={(track) => {
+                setSelectedTrack(track);
+                setSelectedTrackIds(new Set([track.id]));
+                setInspector("details");
+              }}
             />
           )}
           {currentView === "matcher" && (

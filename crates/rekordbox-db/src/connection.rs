@@ -104,6 +104,15 @@ impl RekordboxDb {
         queries::health::audio_fingerprint_duplicates(self.tracks()?, fingerprints)
     }
 
+    /// Library-wide duplicate scan combining exact title+artist, fuzzy title,
+    /// and audio-fingerprint strategies in a single call.
+    pub fn library_duplicate_groups(
+        &self,
+        fingerprints: &std::collections::HashMap<String, Vec<u8>>,
+    ) -> Result<Vec<DuplicateGroup>> {
+        queries::health::library_duplicate_groups(self.tracks()?, fingerprints)
+    }
+
     pub fn broken_metadata_report(&self) -> Result<BrokenMetadataReport> {
         queries::health::broken_metadata_report(self.tracks()?)
     }

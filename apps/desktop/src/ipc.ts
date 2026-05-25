@@ -352,6 +352,18 @@ export async function healthFuzzyDuplicateScan(path: string): Promise<DuplicateG
   return invoke<DuplicateGroup[]>("health_fuzzy_duplicate_scan", { path });
 }
 
+/**
+ * Library-wide duplicate scan. Returns groups across all three strategies
+ * (exact title+artist, fuzzy title, audio fingerprint) tagged with `kind`.
+ */
+export async function listLibraryDuplicateGroups(
+  libraryPath: string,
+): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("library_duplicate_groups", {
+    path: libraryPath,
+  });
+}
+
 export async function healthBrokenLinkScan(
   path: string,
 ): Promise<BrokenMetadataReport> {

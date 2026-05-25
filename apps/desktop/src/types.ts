@@ -30,10 +30,20 @@ export interface PlaylistDetail {
   tracks: Track[];
 }
 
+/** Mirrors `rekordbox_db::types::DuplicateKind`. */
+export type DuplicateKind =
+  | "ExactTitleArtist"
+  | "FuzzyTitle"
+  | "AudioFingerprint";
+
 export interface DuplicateGroup {
   title: string;
   artist: string | null;
   tracks: Track[];
+  /** Detection strategy; defaults to ExactTitleArtist for legacy responses. */
+  kind?: DuplicateKind;
+  /** Confidence in 0.0..=1.0. */
+  confidence?: number;
 }
 
 export interface BrokenMetadataReport {

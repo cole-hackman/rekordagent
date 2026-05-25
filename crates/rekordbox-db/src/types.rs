@@ -68,11 +68,38 @@ pub struct PlaylistEntry {
     pub track_no: Option<i64>,
 }
 
+/// Why a `DuplicateGroup` was flagged. Tags every group so the UI can render a
+/// per-row header explaining the match strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DuplicateKind {
+    /// Identical lowercased+trimmed title AND artist.
+    ExactTitleArtist,
+    /// Fuzzy title signature (strips remix annotations, "feat." markers, etc.)
+    /// plus primary-artist normalisation.
+    FuzzyTitle,
+    /// Chromagram fingerprint within a Hamming-distance threshold.
+    AudioFingerprint,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DuplicateGroup {
     pub title: String,
     pub artist: Option<String>,
     pub tracks: Vec<Track>,
+    /// Detection strategy. Defaults to `ExactTitleArtist` for back-compat.
+    #[serde(default = "default_dup_kind")]
+    pub kind: DuplicateKind,
+    /// Confidence in 0.0..=1.0. Exact matches are 1.0; fuzzy/fingerprint vary.
+    #[serde(default = "default_dup_confidence")]
+    pub confidence: f32,
+}
+
+fn default_dup_kind() -> DuplicateKind {
+    DuplicateKind::ExactTitleArtist
+}
+
+fn default_dup_confidence() -> f32 {
+    1.0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

@@ -1,6 +1,6 @@
-use crate::types::{BrokenMetadataReport, DuplicateGroup, Track};
+use crate::types::{BrokenMetadataReport, DuplicateGroup, DuplicateKind, Track};
 use anyhow::Result;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub fn duplicate_tracks(tracks: Vec<Track>) -> Vec<DuplicateGroup> {
     let mut groups: BTreeMap<(String, String), Vec<Track>> = BTreeMap::new();
@@ -23,6 +23,8 @@ pub fn duplicate_tracks(tracks: Vec<Track>) -> Vec<DuplicateGroup> {
             title: tracks[0].title.clone(),
             artist: tracks[0].artist.clone(),
             tracks,
+            kind: DuplicateKind::ExactTitleArtist,
+            confidence: 1.0,
         })
         .collect()
 }
@@ -56,6 +58,8 @@ pub fn fuzzy_duplicate_tracks(tracks: Vec<Track>) -> Vec<DuplicateGroup> {
             title: tracks[0].title.clone(),
             artist: tracks[0].artist.clone(),
             tracks,
+            kind: DuplicateKind::FuzzyTitle,
+            confidence: 0.85,
         })
         .collect()
 }
@@ -103,14 +107,23 @@ fn fuzzy_artist(value: &str) -> String {
     fuzzy_signature(primary)
 }
 
+/// Maximum number of differing **bits** to still call two fingerprints a match.
+/// Chromagram blobs are nominally 128 bits (16 bytes); 10 bits ≈ 92% similarity.
+pub const FINGERPRINT_HAMMING_MAX_BITS: u32 = 10;
+
+/// Bucket prefix size, in bytes, for the O(n) candidate-pairing heuristic.
+/// Tradeoff: fingerprints whose first BUCKET_PREFIX_BYTES bytes differ are
+/// never compared, so two recordings that diverge in their first ~32 bits
+/// won't group even if the remaining 96 bits match. Acceptable for the
+/// near-duplicate use case (real dupes share leading chroma frames); the
+/// alternative is O(n²) pairwise comparison which doesn't scale past ~5k tracks.
+const BUCKET_PREFIX_BYTES: usize = 4;
+
 pub fn audio_fingerprint_duplicates(
     tracks: Vec<Track>,
-    fingerprints: &std::collections::HashMap<String, Vec<u8>>,
+    fingerprints: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<DuplicateGroup>, anyhow::Error> {
-    let mut groups = Vec::new();
-    let threshold = (128.0 * 0.05) as usize; // 95% similarity
-
-    // Filter to tracks we actually have fingerprints for
+    // Filter to tracks we actually have fingerprints for.
     let fps: Vec<(Track, &Vec<u8>)> = tracks
         .into_iter()
         .filter_map(|t| {
@@ -121,42 +134,94 @@ pub fn audio_fingerprint_duplicates(
         })
         .collect();
 
-    let mut used = vec![false; fps.len()];
-
-    for i in 0..fps.len() {
-        if used[i] {
+    // Bucket by the first BUCKET_PREFIX_BYTES bytes of the chromagram. Only
+    // tracks that share a prefix are compared pairwise — this turns a 50k-track
+    // O(n²) (2.5B compares) into a sum of small per-bucket O(k²) compares.
+    let mut buckets: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
+    for (idx, (_, fp)) in fps.iter().enumerate() {
+        if fp.len() < BUCKET_PREFIX_BYTES {
             continue;
         }
+        let key = fp[..BUCKET_PREFIX_BYTES].to_vec();
+        buckets.entry(key).or_default().push(idx);
+    }
 
-        let mut group = vec![fps[i].0.clone()];
-        used[i] = true;
+    let mut groups = Vec::new();
+    let mut used = vec![false; fps.len()];
 
-        for j in (i + 1)..fps.len() {
-            if used[j] {
+    // Deterministic group order: iterate buckets in insertion order via a sort.
+    let mut bucket_keys: Vec<&Vec<u8>> = buckets.keys().collect();
+    bucket_keys.sort();
+
+    for key in bucket_keys {
+        let indices = &buckets[key];
+        for &i in indices {
+            if used[i] {
                 continue;
             }
-
-            let dist = hamming_distance(fps[i].1, fps[j].1);
-            if dist <= threshold {
-                group.push(fps[j].0.clone());
-                used[j] = true;
+            let mut group_idxs = vec![i];
+            let mut group_dists: Vec<u32> = vec![0];
+            used[i] = true;
+            for &j in indices {
+                if j <= i || used[j] {
+                    continue;
+                }
+                let dist = hamming_bits(fps[i].1, fps[j].1);
+                if dist <= FINGERPRINT_HAMMING_MAX_BITS {
+                    group_idxs.push(j);
+                    group_dists.push(dist);
+                    used[j] = true;
+                }
             }
-        }
-
-        if group.len() > 1 {
-            groups.push(DuplicateGroup {
-                title: format!("{} (Audio Match)", group[0].title),
-                artist: group[0].artist.clone(),
-                tracks: group,
-            });
+            if group_idxs.len() > 1 {
+                let max_dist = *group_dists.iter().max().unwrap_or(&0) as f32;
+                let max_bits = (fps[i].1.len() * 8) as f32;
+                let confidence = if max_bits > 0.0 {
+                    (1.0 - max_dist / max_bits).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let tracks: Vec<Track> = group_idxs.iter().map(|&k| fps[k].0.clone()).collect();
+                groups.push(DuplicateGroup {
+                    title: format!("{} (Audio Match)", tracks[0].title),
+                    artist: tracks[0].artist.clone(),
+                    tracks,
+                    kind: DuplicateKind::AudioFingerprint,
+                    confidence,
+                });
+            }
         }
     }
 
     Ok(groups)
 }
 
-fn hamming_distance(a: &[u8], b: &[u8]) -> usize {
-    a.iter().zip(b.iter()).filter(|(x, y)| x != y).count()
+/// Hamming distance in **bits** between two equal-length byte slices.
+/// If lengths differ, the extra bytes count as fully-different (8 bits each).
+fn hamming_bits(a: &[u8], b: &[u8]) -> u32 {
+    let common = a.len().min(b.len());
+    let extra = (a.len().max(b.len()) - common) as u32 * 8;
+    let mut diff: u32 = 0;
+    for i in 0..common {
+        diff += (a[i] ^ b[i]).count_ones();
+    }
+    diff + extra
+}
+
+/// One-shot library-wide duplicate scan combining all three strategies.
+///
+/// Returns groups in this order: exact-title-artist, then fuzzy-title, then
+/// audio-fingerprint. The same track may appear in multiple groups across
+/// different `kind`s — callers decide whether to dedupe.
+pub fn library_duplicate_groups(
+    tracks: Vec<Track>,
+    fingerprints: &HashMap<String, Vec<u8>>,
+) -> Result<Vec<DuplicateGroup>> {
+    let mut out = Vec::new();
+    out.extend(duplicate_tracks(tracks.clone()));
+    out.extend(fuzzy_duplicate_tracks(tracks.clone()));
+    out.extend(audio_fingerprint_duplicates(tracks, fingerprints)?);
+    Ok(out)
 }
 
 pub fn broken_metadata_report(tracks: Vec<Track>) -> Result<BrokenMetadataReport> {
@@ -266,6 +331,113 @@ mod tests {
         ]);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].tracks.len(), 2);
+    }
+
+    fn track_with_path(id: &str, title: &str, artist: Option<&str>, path: &str) -> Track {
+        let mut t = track(id, title, artist);
+        t.folder_path = Some(path.to_owned());
+        t
+    }
+
+    #[test]
+    fn groups_exact_title_artist() {
+        let groups = duplicate_tracks(vec![
+            track("1", "Strobe", Some("Deadmau5")),
+            track("2", "Strobe", Some("Deadmau5")),
+            track("3", "Unrelated", Some("Deadmau5")),
+        ]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].tracks.len(), 2);
+        assert_eq!(groups[0].kind, DuplicateKind::ExactTitleArtist);
+        assert_eq!(groups[0].confidence, 1.0);
+    }
+
+    #[test]
+    fn groups_fuzzy_title_above_threshold() {
+        // Two titles whose fuzzy signatures collapse to the same string.
+        let groups = fuzzy_duplicate_tracks(vec![
+            track("1", "Strobe", Some("Deadmau5")),
+            track("2", "Strobe (Original Mix)", Some("Deadmau5")),
+            track("3", "Unrelated", Some("Deadmau5")),
+        ]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].tracks.len(), 2);
+        assert_eq!(groups[0].kind, DuplicateKind::FuzzyTitle);
+    }
+
+    #[test]
+    fn groups_fingerprints_within_hamming_threshold() {
+        // Two 16-byte chromagrams (128 bits) differing in 5 bits → group.
+        let a = vec![0u8; 16];
+        let mut b = vec![0u8; 16];
+        // Flip 5 bits in `b`'s last byte (well outside the bucket-prefix bytes
+        // so the bucketed pairing still finds them).
+        b[15] = 0b0001_1111; // 5 ones
+        // A clearly-different fingerprint: 30 bits flipped (>10).
+        let mut c = vec![0u8; 16];
+        for byte in c.iter_mut().take(BUCKET_PREFIX_BYTES) {
+            *byte = 0xFF; // 8 bits each in the prefix → c lands in a different bucket
+        }
+
+        let mut fps: HashMap<String, Vec<u8>> = HashMap::new();
+        fps.insert("/a".to_owned(), a.clone());
+        fps.insert("/b".to_owned(), b);
+        fps.insert("/c".to_owned(), c);
+
+        let groups = audio_fingerprint_duplicates(
+            vec![
+                track_with_path("1", "Track A", Some("X"), "/a"),
+                track_with_path("2", "Track B", Some("X"), "/b"),
+                track_with_path("3", "Track C", Some("X"), "/c"),
+            ],
+            &fps,
+        )
+        .unwrap();
+
+        // Only A↔B should pair.
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].tracks.len(), 2);
+        assert_eq!(groups[0].kind, DuplicateKind::AudioFingerprint);
+        // 5 bits out of 128 → ~96% similarity.
+        assert!(groups[0].confidence > 0.95, "got {}", groups[0].confidence);
+
+        // Sanity: also rejects pairs differing by >10 bits within a single bucket.
+        let mut d = a.clone();
+        d[15] = 0xFF; // 8 bits
+        d[14] = 0xFF; // +8 bits = 16 total, > threshold of 10
+        let mut fps2: HashMap<String, Vec<u8>> = HashMap::new();
+        fps2.insert("/a".to_owned(), a);
+        fps2.insert("/d".to_owned(), d);
+        let groups2 = audio_fingerprint_duplicates(
+            vec![
+                track_with_path("1", "Track A", Some("X"), "/a"),
+                track_with_path("2", "Track D", Some("X"), "/d"),
+            ],
+            &fps2,
+        )
+        .unwrap();
+        assert!(groups2.is_empty(), "expected no group, got {:?}", groups2);
+    }
+
+    #[test]
+    fn library_groups_combines_all_three_strategies() {
+        let mut fps: HashMap<String, Vec<u8>> = HashMap::new();
+        fps.insert("/a".to_owned(), vec![0u8; 16]);
+        fps.insert("/b".to_owned(), vec![0u8; 16]);
+        let tracks = vec![
+            // Exact dupes.
+            track_with_path("1", "Strobe", Some("Deadmau5"), "/a"),
+            track_with_path("2", "Strobe", Some("Deadmau5"), "/b"),
+            // Fuzzy-only dupes.
+            track("3", "Anthem (Original Mix)", Some("A")),
+            track("4", "Anthem", Some("A")),
+        ];
+        let groups = library_duplicate_groups(tracks, &fps).unwrap();
+        // 1 exact + 1 fuzzy + 1 fingerprint = 3 groups.
+        let kinds: Vec<DuplicateKind> = groups.iter().map(|g| g.kind).collect();
+        assert!(kinds.contains(&DuplicateKind::ExactTitleArtist));
+        assert!(kinds.contains(&DuplicateKind::FuzzyTitle));
+        assert!(kinds.contains(&DuplicateKind::AudioFingerprint));
     }
 
     #[test]

@@ -477,6 +477,30 @@ async fn health_fuzzy_duplicate_scan(
     .map_err(|e| e.to_string())?
 }
 
+/// Library-wide duplicate scan combining exact title+artist, fuzzy title, and
+/// (when fingerprint cache is populated) audio-fingerprint groupings.
+#[tauri::command]
+async fn library_duplicate_groups(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Vec<decks_core::rekordbox_db::DuplicateGroup>, String> {
+    // Pull fingerprints from cache; failures degrade to "no fingerprints"
+    // rather than crashing the whole scan.
+    let fingerprints: HashMap<String, Vec<u8>> = cache_db(&app)
+        .and_then(|c| c.get_all_fingerprints().map_err(|e| e.to_string()))
+        .map(|rows| rows.into_iter().collect())
+        .unwrap_or_default();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = decks_core::rekordbox_db::RekordboxDb::open(Path::new(&path))
+            .map_err(|e| e.to_string())?;
+        db.library_duplicate_groups(&fingerprints)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn health_broken_link_scan(
     path: String,
@@ -2544,6 +2568,7 @@ pub fn run() {
             health_orphan_scan,
             health_duplicate_scan,
             health_fuzzy_duplicate_scan,
+            library_duplicate_groups,
             health_broken_link_scan,
             list_tracks_with_cues,
             list_tracks_in_any_playlist,
