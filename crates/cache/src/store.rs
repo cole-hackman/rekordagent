@@ -174,6 +174,46 @@ impl CacheDb {
         Ok(result)
     }
 
+    // ── Waveform peaks ──────────────────────────────────────────────────────
+
+    /// Persist decoded waveform peaks (one `f32` per visual bar) for a track.
+    /// Peaks are stored as a little-endian `f32` blob.
+    pub fn set_waveform_peaks(&self, track_uri: &str, peaks: &[f32]) -> Result<()> {
+        let mut bytes: Vec<u8> = Vec::with_capacity(peaks.len() * 4);
+        for p in peaks {
+            bytes.extend_from_slice(&p.to_le_bytes());
+        }
+        let sample_count = peaks.len() as i64;
+        self.conn.execute(
+            "INSERT INTO waveform_peaks (track_uri, peaks, sample_count)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(track_uri) DO UPDATE SET
+                 peaks = excluded.peaks,
+                 sample_count = excluded.sample_count,
+                 generated_at = CURRENT_TIMESTAMP",
+            rusqlite::params![track_uri, bytes, sample_count],
+        )?;
+        Ok(())
+    }
+
+    /// Load cached waveform peaks for a track, if present.
+    pub fn get_waveform_peaks(&self, track_uri: &str) -> Result<Option<Vec<f32>>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT peaks FROM waveform_peaks WHERE track_uri = ?1")?;
+        let mut rows = stmt.query(rusqlite::params![track_uri])?;
+        if let Some(row) = rows.next()? {
+            let bytes: Vec<u8> = row.get(0)?;
+            let peaks = bytes
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect();
+            Ok(Some(peaks))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn schema_version(&self) -> Result<u32> {
         migrations::current_version(&self.conn)
     }
@@ -992,6 +1032,37 @@ mod tests {
         drop(tmp);
         let db = CacheDb::open(&path).unwrap();
         assert!(db.schema_version().unwrap() >= 1);
+    }
+
+    #[test]
+    fn waveform_peaks_round_trips() {
+        let cache = CacheDb::open_in_memory().unwrap();
+        let peaks: Vec<f32> = vec![0.1, 0.2, -0.3, 0.5];
+        cache.set_waveform_peaks("file:///t1.mp3", &peaks).unwrap();
+        let loaded = cache.get_waveform_peaks("file:///t1.mp3").unwrap();
+        assert_eq!(loaded.unwrap(), peaks);
+    }
+
+    #[test]
+    fn waveform_peaks_returns_none_for_unknown() {
+        let cache = CacheDb::open_in_memory().unwrap();
+        assert!(
+            cache
+                .get_waveform_peaks("file:///nope.mp3")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn waveform_peaks_overwrite_replaces_data() {
+        let cache = CacheDb::open_in_memory().unwrap();
+        cache
+            .set_waveform_peaks("file:///t.mp3", &[0.1, 0.2, 0.3])
+            .unwrap();
+        cache.set_waveform_peaks("file:///t.mp3", &[0.9]).unwrap();
+        let loaded = cache.get_waveform_peaks("file:///t.mp3").unwrap().unwrap();
+        assert_eq!(loaded, vec![0.9_f32]);
     }
 
     #[test]

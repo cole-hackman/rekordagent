@@ -132,6 +132,17 @@ pub const MIGRATIONS: &[(u32, &str)] = &[
         );
         ",
     ),
+    (
+        6,
+        "
+        CREATE TABLE waveform_peaks (
+          track_uri    TEXT PRIMARY KEY,
+          peaks        BLOB NOT NULL,
+          sample_count INTEGER NOT NULL,
+          generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        ",
+    ),
 ];
 
 pub fn current_version(conn: &rusqlite::Connection) -> anyhow::Result<u32> {

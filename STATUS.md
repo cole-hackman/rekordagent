@@ -1,5 +1,8 @@
 # Status
 
+## 2026-05-24 — Sub-Plan 8b: Waveform peaks persisted across restarts
+Added migration v6 (`crates/cache/src/migrations.rs`) creating `waveform_peaks(track_uri PK, peaks BLOB, sample_count, generated_at)` plus `CacheDb::set_waveform_peaks` / `get_waveform_peaks` accessors storing little-endian `f32` blobs. The `get_audio_waveform` Tauri command now checks the cache first (honoring the requested `bars` count via `sample_count` match), only decoding via symphonia on miss, and persisting non-empty results. 3 new Rust tests (`waveform_peaks_round_trips`, `_returns_none_for_unknown`, `_overwrite_replaces_data`).
+
 ## 2026-05-24 — Sub-Plan 8a: Filter persistence per library
 `loadPersistedFilters` / `persistFilters` now key localStorage by `libraryPath` (`decks.filters.v1::<path>`, with the un-keyed `decks.filters.v1` retained as a legacy fallback for `null`). `App.tsx` re-loads filters when the active library changes and writes persist scoped to the current library. Added 6 vitest cases in `apps/desktop/src/lib/filters.test.ts` covering round-trip, library scoping, `query`/`missingFiles` reset on reload, legacy null-key behaviour, quota-exceeded silent-fail, and malformed-JSON recovery.
 

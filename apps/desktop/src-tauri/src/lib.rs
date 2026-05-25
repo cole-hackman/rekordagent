@@ -1303,11 +1303,38 @@ async fn analyze_track(
 }
 
 #[tauri::command]
-async fn get_audio_waveform(file_path: String, bars: Option<usize>) -> Result<Vec<f32>, String> {
+async fn get_audio_waveform(
+    app: tauri::AppHandle,
+    file_path: String,
+    bars: Option<usize>,
+) -> Result<Vec<f32>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let target = bars.unwrap_or(1200);
-        audio_analysis::extract_waveform_peaks(Path::new(&file_path), target)
-            .map_err(|e| e.to_string())
+        let cache = cache_db(&app).ok();
+
+        // Cache-first read: only honor the cached entry when its sample count
+        // matches what the caller requested.
+        if let Some(c) = cache.as_ref() {
+            if let Ok(Some(cached)) = c.get_waveform_peaks(&file_path) {
+                if cached.len() == target {
+                    return Ok(cached);
+                }
+            }
+        }
+
+        let peaks = audio_analysis::extract_waveform_peaks(Path::new(&file_path), target)
+            .map_err(|e| e.to_string())?;
+
+        // Only persist non-empty results to avoid caching decode failures.
+        if !peaks.is_empty() {
+            if let Some(c) = cache.as_ref() {
+                if let Err(e) = c.set_waveform_peaks(&file_path, &peaks) {
+                    tracing::warn!("failed to cache waveform peaks for {file_path}: {e}");
+                }
+            }
+        }
+
+        Ok(peaks)
     })
     .await
     .map_err(|e| e.to_string())?
