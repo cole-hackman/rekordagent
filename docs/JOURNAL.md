@@ -1143,3 +1143,230 @@ Cleanup-style commands can hit `master.db`.
   Music / SoundCloud).
 - Manual smoke against a real `master.db` copy — still required before
   declaring sync write-back production-ready.
+
+## 2026-05-25 — Lexicon parity gap-closure + UI polish backlog
+
+### Plan
+Subagent-driven execution of the master plan at
+`/Users/coleh/.claude-work/plans/cheerful-dreaming-kahan.md`. Audit revealed
+the seven Lexicon features (1–8, with 6 deduped to 2) were 80–100% scaffolded
+already — cache migrations v5, all major Tauri commands, view components,
+`smart-fixes` (11 modules, 28 tests), `track-matcher`, and
+`rekordbox-db::write::WriteGuard` already existed. Reframed as gap-closure,
+not greenfield. Eight sub-plans landed sequentially; each implementer ran
+through TDD, then a spec-compliance review, then a code-quality review,
+with re-dispatch on issues until both reviews passed.
+
+### Shipped (18 commits, oldest → newest)
+
+**Sub-Plan 1 — Custom Tags hardening** (`cc613b9`, `e72167f`, `f40bedb`,
+`fb26e97`)
+- `usage_count: u32` joined onto `list_tags`; chips render `(N)` badges.
+- New `tagIds: string[]` + `tagMatchAll: boolean` filter dimension.
+  `FilterContext.tagsByTrack: Map<string, Set<string>>` hydrated via new
+  `list_track_tags_map` IPC.
+- T-key keyboard shortcut + right-click "Edit tags…" both mount the
+  existing `TagPickerModal`. "Show tracks" button on CustomTagsPanel
+  navigates to library view with `tagIds` pre-set.
+- FilterDrawer Tags section (MultiSelect + Any/All toggle); FilterChips
+  removable per-tag chips.
+- Drag-to-reorder deferred — `reorder_tags` backend command doesn't
+  exist; documented in STATUS.md.
+- Quality follow-ups: `invalidateQueries(["track-tags-map", libraryPath])`
+  after picker mutations (filter Map was going silently stale); collapsed
+  N-per-track `getTrackTags` IPCs to a single `tagsByTrack` prop lookup;
+  parallelized `toggleTag` per-track add/remove via `Promise.all`.
+
+**Sub-Plan 2 — Genre/Artist Cleanup test coverage** (`557aba0`, `a50a27c`)
+- 7 vitest cases for `CleanupPanel` (genre+artist, single+multi-select,
+  rename + delete, disabled-when-empty, empty state).
+- Playwright `cleanup.spec.ts`: nav → rename → Changes view → Accept →
+  Export XML.
+- Smoke-script extension deferred: `list_genres` is Tauri-only, not in
+  `crates/agent-tools/src/mcp.rs`. Same pattern repeats through Sub-Plans
+  3 and 4 — many UI-facing commands aren't MCP-exposed.
+
+**Sub-Plan 3 — Smart Fixes E2E** (`4fd4f7d`)
+- Playwright `smart-fixes.spec.ts`: scan → deselect one → stage → assert
+  staged rows in Changes view.
+- Two new `add_mix_parens` edge-case tests (single-word suffix without
+  leading space; nested parens like `"Song (Original Mix) (Bootleg)"`).
+- Blocklist editing UI absent (only IPC wrappers exist) — documented as
+  follow-up feature work, not built.
+
+**Sub-Plan 4 — Incoming/Archive verification** (`3c17e98`)
+- Playwright `incoming-archive.spec.ts`: 2 tests covering inbox mark-all
+  and archive unarchive round-trips.
+- Context-menu items from spec ("Mark as reviewed" / "Archive" /
+  "Unarchive" / "Delete from library") not in `useTrackContextActions` —
+  header buttons already cover the same workflows, so deferred as
+  feature work.
+
+**Sub-Plan 5 — Track Matcher CSV** (`bd0afed`, `fecab87`)
+- Added workspace `csv` dep. New `crates/track-matcher/src/csv_input.rs`
+  (named `csv_input` to avoid shadowing the external crate) with
+  `parse_csv` + `parse_headers`. `MatchInput` got `Serialize`.
+- `parse_csv_for_matcher` + `parse_csv_headers_for_matcher` Tauri
+  commands.
+- `TrackMatcherView` delegates both CSV parse AND header extraction to
+  the backend. (The follow-up commit fixed a Sub-Plan-5-review-only
+  finding: the frontend was doing a naive `firstLine.split(",")` for the
+  column-mapping dropdown, which broke for headers with quoted commas.)
+- 6 Rust integration tests + 1 vitest. Round-trip test exercises the
+  full CSV → match pipeline against an in-memory library.
+
+**Sub-Plan 7 — Enhanced track columns** (`b34efd0`, `353d193`)
+- `Track.energy: Option<f32>` hydrated via `hydrate_energy` from
+  `cache.db::audio_features` (batched in ≤500-per-chunk `IN()` queries,
+  keyed by `track_uri` matching `analyze_file_cached`'s write side).
+  Wired into `list_tracks`, `library_search`, `list_incoming_tracks`,
+  `list_archived_tracks`.
+- New `apps/desktop/src/lib/camelot.ts` with all 24 keys + enharmonic
+  variants (`Cm`, `C minor`, `C min`, etc.) → Camelot codes. Mixed In
+  Key colour palette. 9 vitest cases.
+- `<EnergyBar>` component with ARIA progressbar role.
+- `<TrackTable>` refactored to build columns dynamically via `useMemo`:
+  Energy column inserted between Key and Time; Tags column appended at
+  the right and conditionally mounted only when
+  `filterCtx.tagsByTrack.size > 0`. Key cell tints via `colorForKey`.
+- Quality follow-up: `get_energy_by_uris` flipped from
+  `ORDER BY created_at ASC` (relied on HashMap last-write-wins) to
+  `DESC` + `entry().or_insert` — newest row per URI wins on first sight,
+  unambiguous even if a future `LIMIT` is added.
+
+**Sub-Plan 6 — Sync stubbed options** (`db7c72c`, `55f58f0`, `2ff9f35`)
+- `SyncOptions { cue_destination, keep_grids, convert_keys,
+  change_to_nearest_color, all_smartlists_to_playlists }` in
+  `crates/changes/src/applier.rs`. `apply_with_options` is the new
+  entry; legacy `apply` kept as shim.
+- `crates/changes/src/key_format.rs` mirrors the TS Camelot table for
+  Rust applier; `to_camelot` + `to_open_key` (`"C minor"` → `"5A"` /
+  `"5m"`, etc.). Invalid keys fall through to the original value.
+- `convert_keys` fully honored on `musical_key` `TrackMetadataEdit`s.
+  `keep_grids` skips BPM `TrackMetadataEdit`s (beat-grid ANLZ
+  pass-through has no existing stager, deferred). `cue_destination`
+  controls `djmdCue.Kind` on newly inserted `TrackAddCue` rows
+  (Hot=non-zero, Memory=0, Both inserts two rows).
+- `change_to_nearest_color` and `all_smartlists_to_playlists` plumbed
+  through the struct but not yet honored — documented.
+- `SyncPanel.tsx` controls no longer disabled; options round-trip
+  through `syncExecute`.
+- ADR-0010 added in `DECISIONS.md`: the long-standing "never mutate
+  master.db" invariant is formally relaxed for the Sync feature only,
+  gated by `WriteGuard` backup + WAL probe. XML export remains the
+  default safe path.
+- `docs/MANUAL_TEST_PLAN.md` gained a "Sync Sub-Plan 6 Verification"
+  section with the disposable-DB smoke (`cp ~/.../master.db /tmp/...`
+  + sha256-unchanged check on the real library).
+- Quality follow-up: `ApplyResult.warnings: Vec<String>` so silent key
+  conversion failures (e.g. `"C♭ Major"`) surface in the toast detail
+  instead of being lost.
+
+**Sub-Plan 8a — Per-library filter persistence** (`8382081`)
+- `loadPersistedFilters(libraryPath)` / `persistFilters(filters,
+  libraryPath)` scope `localStorage` to `decks.filters.v1::<libraryPath>`
+  with legacy un-keyed fallback for null. App.tsx swaps filters when
+  `libraryPath` changes. 6 vitest cases including quota-exceeded
+  silent-fail and malformed-JSON recovery.
+
+**Sub-Plan 8b — Waveform peaks cache persistence** (`eee6512`)
+- Cache migration v6 adds `waveform_peaks(track_uri PK, peaks BLOB,
+  sample_count, generated_at)`. `set_waveform_peaks` / `get_waveform_peaks`
+  encode f32 little-endian.
+- `get_audio_waveform` now reads cache first (honoring requested `bars`
+  via `sample_count` match); on miss, decode via symphonia, then
+  persist non-empty results. Cache-open failures degrade gracefully.
+- 3 Rust round-trip tests.
+
+**Sub-Plan 8c — Library-wide duplicate detection + DuplicatesView**
+(`f0533c0`)
+- `DuplicateGroup` gains `kind: DuplicateKind` (`ExactTitleArtist` /
+  `FuzzyTitle` / `AudioFingerprint`) + `confidence: f32`. `serde(default)`
+  preserves legacy callers of `health_duplicate_scan` /
+  `health_fuzzy_duplicate_scan`.
+- Bucketed fingerprint comparison (first 4 chromagram bytes → bucket,
+  pairwise within bucket) replaces O(n²). `hamming_bits` correctly
+  counts bit differences via `(a ^ b).count_ones()`. The previous
+  fingerprint code was counting differing **bytes** and calling them
+  bits, which was wrong — silently fixed as part of this commit.
+  `FINGERPRINT_HAMMING_MAX_BITS = 10` of 128.
+- New `library_duplicate_groups` Tauri command runs all three
+  strategies. Cache miss for fingerprints degrades to exact + fuzzy
+  only.
+- New `<DuplicatesView>`: per-group radio "keep" picker, "Keep one,
+  archive rest" → `archive_tracks`, row-level "Open in inspector" sets
+  `selectedTrack` + flips inspector to `details`.
+- Sidebar nav entry between Smart Fixes and Track Matcher.
+- 4 new Rust unit tests + 4 vitest cases.
+
+### Verification (2026-05-25, at HEAD `f0533c0`)
+- `cargo test --workspace`: green.
+- `cargo clippy --workspace --all-targets -- -D warnings`: clean.
+- `pnpm test`: 208/208 across 25 files (was 139 before Sub-Plan 1).
+- `pnpm typecheck`: clean.
+- `pnpm lint`: clean.
+- `pnpm e2e`: 8/8 (was 4 — added cleanup, smart-fixes, incoming-archive
+  Playwright specs).
+- `RUN_ANALYZE=0 ./scripts/real-library-smoke.sh`: 12/12, `master.db`
+  sha256 unchanged.
+
+### Bonus bug finds along the way
+
+Each became its own commit:
+- Tag-filter `tagsByTrack` Map went silently stale after picker
+  mutations because TanStack Query had `staleTime: Infinity` and no
+  invalidation was wired (`f40bedb`).
+- N serial per-track IPC calls in `TagPickerModal` hung the modal for
+  large multi-selections (`f40bedb`, then `fb26e97`).
+- Frontend used naive `firstLine.split(",")` for CSV header extraction
+  while backend used RFC-4180-correct parsing — quoted-comma headers
+  broke the column mapping (`fecab87`).
+- `get_energy_by_uris` relied on HashMap last-write-wins ordering
+  (`353d193`).
+- Sync silently dropped data when `to_camelot`/`to_open_key` returned
+  `None` — `ApplyResult.warnings` now surfaces these in the toast
+  detail (`2ff9f35`).
+- Fingerprint Hamming distance was counting differing **bytes**, not
+  bits (folded into `f0533c0`).
+
+### Still deferred (not blocked by anything Claude could do)
+- **Sub-Plan 0 — v0.1.0 manual UI verification.** The data-layer half
+  is automated via `scripts/real-library-smoke.sh`; the GUI-only items
+  (first-run wizard, scroll smoothness, column sort, theme persistence,
+  spacebar focus rules, keychain prompt, chat panel mount, fresh bundle
+  launch) still need a human at the app. Then we can tag v0.1.0.
+- **Sub-Plan 6 disposable-DB smoke.** Procedure documented in
+  `docs/MANUAL_TEST_PLAN.md` under "Sync Sub-Plan 6 Verification" —
+  copies the real library to `/tmp`, runs `sync_execute`, asserts the
+  backup ledger entry + `sync_runs` row, and confirms the real
+  `master.db` sha256 is unchanged. Must be run by the user before
+  declaring sync write-back production-ready.
+- **Drag-to-reorder tags** (Sub-Plan 1 step 9) — needs a `reorder_tags`
+  backend command that doesn't exist yet.
+- **`common_text_blocklist` editing UI** (Sub-Plan 3) — IPC wrappers
+  exist but no UI surface; pure feature work, deferred.
+- **Incoming/Archive context-menu items** (Sub-Plan 4) — would need
+  per-view extras plumbed through `App.handleTrackContextMenu` and
+  `useTrackContextActions`; header buttons cover the same workflows.
+- **`change_to_nearest_color` and `all_smartlists_to_playlists` sync
+  options** (Sub-Plan 6) — plumbed through the struct but not honored
+  by the applier yet.
+- **Track Matcher external sources** (Spotify/YouTube/Tidal/Apple
+  Music/SoundCloud) — out of session scope per the original Q&A.
+- **Beat-grid ANLZ pass-through under `keep_grids`** — no existing
+  stager for ANLZ writes; only BPM `TrackMetadataEdit`s are skipped
+  today.
+
+### Notes on process
+Subagent-driven development worked well at this scale (~70 distinct
+checkbox steps across 8 sub-plans). The two-stage review (spec
+compliance, then code quality) caught five real bugs that pure
+TDD-by-the-implementer would have shipped. The implementer subagents
+also consistently caught their own scope misalignments — `Candidate`
+vs `MatchInput` in track-matcher, the existing `TagPickerModal`
+instead of building a new popover, `crates/changes/src/applier`
+restructure — and asked the right deferral questions instead of
+guessing on murky paths (cue `Kind` semantics, ANLZ writes,
+`change_to_nearest_color` semantics). Three rate-limit hits during the
+session — handled by re-dispatching once limits cleared, or doing the
+review inline when straightforward.
