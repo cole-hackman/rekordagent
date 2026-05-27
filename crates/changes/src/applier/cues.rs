@@ -182,9 +182,11 @@ mod tests {
         )
         .unwrap();
         let kind: i64 = tx
-            .query_row("SELECT Kind FROM djmdCue WHERE ContentID='track1'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT Kind FROM djmdCue WHERE ContentID='track1'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(kind, 0);
     }
@@ -235,9 +237,11 @@ mod tests {
         )
         .unwrap();
         let kind: i64 = tx
-            .query_row("SELECT Kind FROM djmdCue WHERE ContentID='track1'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT Kind FROM djmdCue WHERE ContentID='track1'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(kind, 7);
     }

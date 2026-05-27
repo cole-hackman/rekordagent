@@ -373,7 +373,7 @@ mod tests {
         // Flip 5 bits in `b`'s last byte (well outside the bucket-prefix bytes
         // so the bucketed pairing still finds them).
         b[15] = 0b0001_1111; // 5 ones
-        // A clearly-different fingerprint: 30 bits flipped (>10).
+                             // A clearly-different fingerprint: 30 bits flipped (>10).
         let mut c = vec![0u8; 16];
         for byte in c.iter_mut().take(BUCKET_PREFIX_BYTES) {
             *byte = 0xFF; // 8 bits each in the prefix → c lands in a different bucket

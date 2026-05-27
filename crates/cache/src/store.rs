@@ -713,9 +713,7 @@ impl CacheDb {
              (SELECT COUNT(*) FROM track_tags tt WHERE tt.tag_id = t.id) AS usage_count \
              FROM tags t";
         if let Some(cat_id) = category_id {
-            let sql = format!(
-                "{with_count} WHERE t.category_id = ?1 ORDER BY t.seq, t.name"
-            );
+            let sql = format!("{with_count} WHERE t.category_id = ?1 ORDER BY t.seq, t.name");
             let mut stmt = self.conn.prepare(&sql)?;
             let mut rows = stmt.query(rusqlite::params![cat_id])?;
             while let Some(r) = rows.next()? {
@@ -867,9 +865,9 @@ impl CacheDb {
         &self,
         library_path: &str,
     ) -> Result<std::collections::HashMap<String, Vec<String>>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT track_id, tag_id FROM track_tags WHERE library_path = ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT track_id, tag_id FROM track_tags WHERE library_path = ?1")?;
         let rows = stmt.query_map(rusqlite::params![library_path], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
         })?;
@@ -1046,12 +1044,10 @@ mod tests {
     #[test]
     fn waveform_peaks_returns_none_for_unknown() {
         let cache = CacheDb::open_in_memory().unwrap();
-        assert!(
-            cache
-                .get_waveform_peaks("file:///nope.mp3")
-                .unwrap()
-                .is_none()
-        );
+        assert!(cache
+            .get_waveform_peaks("file:///nope.mp3")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -1147,11 +1143,12 @@ mod tests {
                 rusqlite::params!["file:///newest.mp3"],
             )
             .unwrap();
-        let map = db
-            .get_energy_by_uris(&["file:///newest.mp3"])
-            .unwrap();
+        let map = db.get_energy_by_uris(&["file:///newest.mp3"]).unwrap();
         let energy = map.get("file:///newest.mp3").copied().expect("present");
-        assert!((energy - 0.91).abs() < 1e-9, "expected newest energy, got {energy}");
+        assert!(
+            (energy - 0.91).abs() < 1e-9,
+            "expected newest energy, got {energy}"
+        );
     }
 
     #[test]
@@ -1324,8 +1321,14 @@ mod tests {
 
         // Fresh tags have a zero usage count.
         let tags = db.list_tags(Some(&cat.id)).unwrap();
-        assert_eq!(tags.iter().find(|t| t.id == chill.id).unwrap().usage_count, 0);
-        assert_eq!(tags.iter().find(|t| t.id == hype.id).unwrap().usage_count, 0);
+        assert_eq!(
+            tags.iter().find(|t| t.id == chill.id).unwrap().usage_count,
+            0
+        );
+        assert_eq!(
+            tags.iter().find(|t| t.id == hype.id).unwrap().usage_count,
+            0
+        );
 
         // Assign `chill` to two tracks, `hype` to one.
         db.add_track_tag("/lib.db", "track-1", &chill.id).unwrap();
@@ -1339,7 +1342,8 @@ mod tests {
         assert_eq!(hype_row.usage_count, 1);
 
         // Removing a binding decrements the count.
-        db.remove_track_tag("/lib.db", "track-2", &chill.id).unwrap();
+        db.remove_track_tag("/lib.db", "track-2", &chill.id)
+            .unwrap();
         let tags = db.list_tags(None).unwrap();
         assert_eq!(
             tags.iter().find(|t| t.id == chill.id).unwrap().usage_count,

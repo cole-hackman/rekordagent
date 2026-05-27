@@ -127,9 +127,7 @@ fn apply_single(
     warnings: &mut Vec<String>,
 ) -> anyhow::Result<()> {
     match change.kind {
-        ChangeKind::TrackMetadataEdit => {
-            tracks::apply_metadata_edit(tx, change, options, warnings)
-        }
+        ChangeKind::TrackMetadataEdit => tracks::apply_metadata_edit(tx, change, options, warnings),
         ChangeKind::TrackDelete => tracks::apply_delete(tx, change),
         ChangeKind::TrackAddCue => cues::apply_add_cue(tx, change, options),
         ChangeKind::CueMetadataEdit => cues::apply_metadata_edit(tx, change),
@@ -189,7 +187,9 @@ mod tests {
         // row stays at its original value.
         assert_eq!(res.applied, vec!["c1"]);
         let bpm: f64 = tx
-            .query_row("SELECT BPM FROM djmdContent WHERE ID='t1'", [], |r| r.get(0))
+            .query_row("SELECT BPM FROM djmdContent WHERE ID='t1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(bpm, 120.0);
     }
@@ -201,7 +201,9 @@ mod tests {
         let res = apply_with_options(&tx, &[bpm_change(128.0)], &SyncOptions::default()).unwrap();
         assert_eq!(res.applied, vec!["c1"]);
         let bpm: f64 = tx
-            .query_row("SELECT BPM FROM djmdContent WHERE ID='t1'", [], |r| r.get(0))
+            .query_row("SELECT BPM FROM djmdContent WHERE ID='t1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(bpm, 128.0);
     }

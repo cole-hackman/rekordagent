@@ -22,11 +22,7 @@ pub fn to_camelot(key: &str) -> Option<String> {
     }
 
     let (root, is_minor) = parse_musical_key(trimmed)?;
-    let table = if is_minor {
-        MINOR_TABLE
-    } else {
-        MAJOR_TABLE
-    };
+    let table = if is_minor { MINOR_TABLE } else { MAJOR_TABLE };
     table
         .iter()
         .find(|(name, _)| *name == root.as_str())
@@ -59,7 +55,10 @@ fn split_camelot(s: &str) -> Option<(u8, char)> {
         'b' | 'B' => 'B',
         _ => return None,
     };
-    let num_str: String = s[..s.len() - 1].chars().filter(|c| !c.is_whitespace()).collect();
+    let num_str: String = s[..s.len() - 1]
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     let num: u8 = num_str.parse().ok()?;
     Some((num, suffix))
 }

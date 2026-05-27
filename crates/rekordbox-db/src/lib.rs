@@ -23,7 +23,6 @@ pub use anlz::{DetailPoint, PreviewPoint, WaveformColor};
 pub use connection::RekordboxDb;
 pub use types::{
     ArtistCount, BeatGridEntry, BrokenMetadataReport, CueKind, DuplicateGroup, DuplicateKind,
-    GenreCount, HotCue,
-    LibraryAnalytics, Playlist, PlaylistEntry, PlaylistKind, Track,
+    GenreCount, HotCue, LibraryAnalytics, Playlist, PlaylistEntry, PlaylistKind, Track,
 };
 pub use write::{WriteError, WriteGuard, WriteSession};
