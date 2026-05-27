@@ -1,6 +1,31 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import type { Track, HotCue, Playlist } from "./types";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import type {
+  Track,
+  HotCue,
+  Playlist,
+  PlaylistDetail,
+  DuplicateGroup,
+  BrokenMetadataReport,
+  LibraryAnalytics,
+  TrackTags,
+  TagWriteFields,
+  AnalysisResult,
+  AnlzWaveform,
+  RelocateCandidate,
+  GenreCount,
+  ArtistCount,
+  TagCategory,
+  Tag,
+} from "./types";
+import type {
+  ChatMessage,
+  ConversationSummary,
+  NewStagedChange,
+  PersistedConversation,
+  PersistedConversationMessage,
+  StagedChange,
+} from "./agent/types";
 
 export async function pickLibraryPath(): Promise<string | null> {
   const result = await open({
@@ -19,6 +44,13 @@ export async function validateLibraryPath(path: string): Promise<number> {
 
 export async function listTracks(path: string): Promise<Track[]> {
   return invoke<Track[]>("list_tracks", { path });
+}
+
+export async function getTrack(
+  path: string,
+  trackId: string,
+): Promise<Track | null> {
+  return invoke<Track | null>("get_track", { path, trackId });
 }
 
 export async function getTrackCues(
@@ -57,8 +89,29 @@ export interface PlaybackState {
   path: string | null;
 }
 
+export interface PlaybackStatus {
+  is_playing: boolean;
+  path: string | null;
+  /** Seconds since playback started, 0 if no track loaded. */
+  time: number;
+  /** Total track duration in seconds, 0 if unknown. */
+  duration: number;
+}
+
 export async function getPlaybackState(): Promise<PlaybackState> {
   return invoke<PlaybackState>("get_playback_state");
+}
+
+export async function getPlaybackStatus(): Promise<PlaybackStatus> {
+  return invoke<PlaybackStatus>("get_playback_status");
+}
+
+export async function seekAudio(timeSecs: number): Promise<void> {
+  return invoke<void>("seek_audio", { timeSecs });
+}
+
+export async function revealInFinder(path: string): Promise<void> {
+  return invoke<void>("reveal_in_finder", { path });
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -69,6 +122,19 @@ export async function getTheme(): Promise<string | null> {
 
 export async function setTheme(theme: string): Promise<void> {
   return invoke<void>("set_theme", { theme });
+}
+
+export type AgentModel =
+  | "claude-opus-4-7"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5-20251001";
+
+export async function getAgentModel(): Promise<AgentModel> {
+  return invoke<AgentModel>("get_agent_model");
+}
+
+export async function setAgentModel(model: AgentModel): Promise<void> {
+  return invoke<void>("set_agent_model", { model });
 }
 
 export async function getApiKey(service: string): Promise<string | null> {
@@ -83,6 +149,132 @@ export async function deleteApiKey(service: string): Promise<void> {
   return invoke<void>("delete_api_key", { service });
 }
 
+export interface ClaudeCodeStatus {
+  installed: boolean;
+  version: string | null;
+  logged_in: boolean | null;
+  auth_method: string | null;
+  subscription_type: string | null;
+  email: string | null;
+  error: string | null;
+}
+
+export async function getClaudeCodeStatus(): Promise<ClaudeCodeStatus> {
+  return invoke<ClaudeCodeStatus>("get_claude_code_status");
+}
+
+// ── Conversations ────────────────────────────────────────────────────────────
+
+export async function listConversations(
+  libraryPath?: string | null,
+): Promise<ConversationSummary[]> {
+  return invoke<ConversationSummary[]>("list_conversations", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export async function createConversation(
+  libraryPath: string | null,
+  title: string,
+): Promise<ConversationSummary> {
+  return invoke<ConversationSummary>("create_conversation", {
+    libraryPath,
+    title,
+  });
+}
+
+export async function loadConversation(
+  id: string,
+): Promise<PersistedConversation | null> {
+  return invoke<PersistedConversation | null>("load_conversation", { id });
+}
+
+export async function appendConversationMessage(
+  conversationId: string,
+  role: string,
+  content: ChatMessage,
+): Promise<PersistedConversationMessage> {
+  return invoke<PersistedConversationMessage>("append_conversation_message", {
+    conversationId,
+    role,
+    content,
+  });
+}
+
+export async function renameConversation(
+  id: string,
+  title: string,
+): Promise<void> {
+  return invoke<void>("rename_conversation", { id, title });
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  return invoke<void>("delete_conversation", { id });
+}
+
+// ── Staged changes ───────────────────────────────────────────────────────────
+
+export async function stageChange(
+  change: NewStagedChange,
+): Promise<StagedChange> {
+  return invoke<StagedChange>("stage_change", { change });
+}
+
+export async function listChanges(
+  libraryPath?: string | null,
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("list_changes", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export async function acceptChange(id: string): Promise<StagedChange> {
+  return invoke<StagedChange>("accept_change", { id });
+}
+
+export async function rejectChange(id: string): Promise<StagedChange> {
+  return invoke<StagedChange>("reject_change", { id });
+}
+
+export async function acceptAllSafe(
+  libraryPath?: string | null,
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("accept_all_safe", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export async function rejectAll(
+  libraryPath?: string | null,
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("reject_all", {
+    libraryPath: libraryPath ?? null,
+  });
+}
+
+export interface ExportResult {
+  output_path: string;
+  exported_count: number;
+}
+
+export async function exportAcceptedChanges(
+  libraryPath: string,
+  outputPath?: string | null,
+): Promise<ExportResult | null> {
+  const resolvedPath =
+    outputPath ??
+    (await save({
+      title: "Export Rekordbox XML",
+      defaultPath: "rekordagent-export.xml",
+      filters: [{ name: "Rekordbox XML", extensions: ["xml"] }],
+    }));
+  if (!resolvedPath) return null;
+  return invoke<ExportResult>("export_accepted_changes", {
+    libraryPath,
+    outputPath: resolvedPath,
+  });
+}
+
 // ── Agent tools ───────────────────────────────────────────────────────────────
 
 export async function librarySearch(
@@ -93,11 +285,474 @@ export async function librarySearch(
   return invoke<Track[]>("library_search", { path, query, limit });
 }
 
+export async function suggestNextTracks(
+  path: string,
+  trackId: string,
+  limit?: number,
+): Promise<[Track, import("./types").TransitionScore][]> {
+  return invoke<[Track, import("./types").TransitionScore][]>("suggest_next_tracks", { path, trackId, limit });
+}
+
+export async function libraryStageIntroCues(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<StagedChange[]> {
+  return invoke<StagedChange[]>("library_stage_intro_cues", {
+    libraryPath,
+    trackIds,
+  });
+}
+
+export async function libraryStagePlaylistRemoveTrack(
+  libraryPath: string,
+  playlistId: string,
+  trackId: string,
+): Promise<StagedChange> {
+  return invoke<StagedChange>("library_stage_playlist_remove_track", {
+    libraryPath,
+    playlistId,
+    trackId,
+  });
+}
+
 export async function listPlaylists(path: string): Promise<Playlist[]> {
   return invoke<Playlist[]>("list_playlists", { path });
 }
 
+export async function getPlaylist(
+  path: string,
+  playlistId: string,
+): Promise<PlaylistDetail | null> {
+  return invoke<PlaylistDetail | null>("get_playlist", { path, playlistId });
+}
+
+export async function listTracksWithCues(path: string): Promise<string[]> {
+  return invoke<string[]>("list_tracks_with_cues", { path });
+}
+
+export async function listTracksInAnyPlaylist(path: string): Promise<string[]> {
+  return invoke<string[]>("list_tracks_in_any_playlist", { path });
+}
+
+export async function listTracksWithMissingFiles(
+  path: string,
+): Promise<string[]> {
+  return invoke<string[]>("list_tracks_with_missing_files", { path });
+}
+
 export async function healthOrphanScan(path: string): Promise<Track[]> {
   return invoke<Track[]>("health_orphan_scan", { path });
+}
+
+export async function healthDuplicateScan(path: string): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("health_duplicate_scan", { path });
+}
+
+export async function healthFuzzyDuplicateScan(path: string): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("health_fuzzy_duplicate_scan", { path });
+}
+
+/**
+ * Library-wide duplicate scan. Returns groups across all three strategies
+ * (exact title+artist, fuzzy title, audio fingerprint) tagged with `kind`.
+ */
+export async function listLibraryDuplicateGroups(
+  libraryPath: string,
+): Promise<DuplicateGroup[]> {
+  return invoke<DuplicateGroup[]>("library_duplicate_groups", {
+    path: libraryPath,
+  });
+}
+
+export async function healthBrokenLinkScan(
+  path: string,
+): Promise<BrokenMetadataReport> {
+  return invoke<BrokenMetadataReport>("health_broken_link_scan", { path });
+}
+
+export async function getLibraryAnalytics(
+  path: string,
+): Promise<LibraryAnalytics> {
+  return invoke<LibraryAnalytics>("library_analytics", { path });
+}
+
+export async function readAudioTags(filePath: string): Promise<TrackTags> {
+  return invoke<TrackTags>("read_audio_tags", { filePath });
+}
+
+export async function analyzeTrack(
+  libraryPath: string,
+  trackId: string,
+): Promise<AnalysisResult> {
+  return invoke<AnalysisResult>("analyze_track", {
+    libraryPath,
+    trackId,
+  });
+}
+
+export async function getAnlzWaveform(
+  libraryPath: string,
+  trackId: string,
+): Promise<AnlzWaveform> {
+  return invoke<AnlzWaveform>("get_anlz_waveform", { libraryPath, trackId });
+}
+
+export async function getAudioWaveform(
+  filePath: string,
+  bars?: number,
+): Promise<number[]> {
+  return invoke<number[]>("get_audio_waveform", { filePath, bars: bars ?? null });
+}
+
+export async function writeAudioTags(
+  filePath: string,
+  fields: TagWriteFields,
+): Promise<void> {
+  return invoke<void>("write_audio_tags", { filePath, fields });
+}
+
+export async function relocateScan(
+  libraryPath: string,
+  searchRoots: string[],
+): Promise<RelocateCandidate[]> {
+  return invoke<RelocateCandidate[]>("relocate_scan", {
+    libraryPath,
+    searchRoots,
+  });
+}
+
+// ── Sync (master.db write-back) ────────────────────────────────────────────
+
+export interface SyncCheckResult {
+  locked: boolean;
+  pending_changes: number;
+}
+
+export interface ApplyResult {
+  applied: string[];
+  failed: [string, string][];
+  /** Non-fatal warnings (e.g. unconvertible key values). Optional so older
+   *  Tauri builds that pre-date the field still deserialize cleanly. */
+  warnings?: string[];
+}
+
+export async function syncCheck(libraryPath: string): Promise<SyncCheckResult> {
+  return invoke<SyncCheckResult>("sync_check", { libraryPath });
+}
+
+export async function syncExecuteAccepted(libraryPath: string): Promise<ApplyResult> {
+  return invoke<ApplyResult>("sync_execute_accepted", { libraryPath });
+}
+
+export type SyncMode = "full" | "playlist" | "modified";
+
+export type CueDestination = "hot" | "memory" | "both";
+export type KeyFormat = "original" | "camelot" | "open_key";
+
+export interface SyncOptions {
+  playlist_id?: string | null;
+  since_ts?: number | null;
+  // Writer-side options — forwarded into the Rust `changes::applier`.
+  cue_destination?: CueDestination;
+  keep_grids?: boolean;
+  convert_keys?: KeyFormat;
+  change_to_nearest_color?: boolean;
+  all_smartlists_to_playlists?: boolean;
+}
+
+export interface PendingChange {
+  change_id: string;
+  kind: string;
+  track_id: string | null;
+  track_title: string | null;
+  field: string | null;
+  old_value: unknown;
+  new_value: unknown;
+  reason: string | null;
+  updated_at: number;
+}
+
+export async function syncPreview(
+  libraryPath: string,
+  mode: SyncMode = "full",
+  options: SyncOptions = {},
+): Promise<PendingChange[]> {
+  return invoke<PendingChange[]>("sync_preview", { libraryPath, mode, options });
+}
+
+export async function syncExecute(
+  libraryPath: string,
+  mode: SyncMode,
+  options: SyncOptions,
+  changeIds: string[],
+): Promise<ApplyResult> {
+  return invoke<ApplyResult>("sync_execute", {
+    libraryPath,
+    mode,
+    options,
+    changeIds,
+  });
+}
+
+// ── Custom Tags & Cleanup ──────────────────────────────────────────────────
+
+export interface CleanupResult {
+  affected_tracks: number;
+  staged_change_ids: string[];
+}
+
+export async function listGenres(path: string): Promise<GenreCount[]> {
+  return invoke<GenreCount[]>("list_genres", { path });
+}
+
+export async function listArtists(path: string): Promise<ArtistCount[]> {
+  return invoke<ArtistCount[]>("list_artists", { path });
+}
+
+export async function renameGenre(
+  libraryPath: string,
+  oldGenre: string,
+  newGenre: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("rename_genre", { libraryPath, oldGenre, newGenre });
+}
+
+export async function renameArtist(
+  libraryPath: string,
+  oldArtist: string,
+  newArtist: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("rename_artist", { libraryPath, oldArtist, newArtist });
+}
+
+export async function deleteGenre(
+  libraryPath: string,
+  genre: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("delete_genre", { libraryPath, genre });
+}
+
+export async function deleteArtist(
+  libraryPath: string,
+  artist: string,
+): Promise<CleanupResult> {
+  return invoke<CleanupResult>("delete_artist", { libraryPath, artist });
+}
+
+// ── Incoming / Archive ─────────────────────────────────────────────────────
+
+export async function listIncomingTracks(libraryPath: string): Promise<Track[]> {
+  return invoke<Track[]>("list_incoming_tracks", { libraryPath });
+}
+
+export async function clearIncoming(libraryPath: string): Promise<void> {
+  return invoke<void>("clear_incoming", { libraryPath });
+}
+
+export async function listArchivedTracks(libraryPath: string): Promise<Track[]> {
+  return invoke<Track[]>("list_archived_tracks", { libraryPath });
+}
+
+export async function listArchivedTrackIds(libraryPath: string): Promise<string[]> {
+  return invoke<string[]>("list_archived_track_ids", { libraryPath });
+}
+
+export async function archiveTracks(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<void> {
+  return invoke<void>("archive_tracks", { libraryPath, trackIds });
+}
+
+export async function unarchiveTracks(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<void> {
+  return invoke<void>("unarchive_tracks", { libraryPath, trackIds });
+}
+
+export async function stageTrackDelete(
+  libraryPath: string,
+  trackIds: string[],
+): Promise<number> {
+  return invoke<number>("stage_track_delete", { libraryPath, trackIds });
+}
+
+// ── Smart Fixes ─────────────────────────────────────────────────────────────
+
+export interface FixProposal {
+  id: string;
+  track_id: string;
+  track_title: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+}
+
+export const SMART_FIX_NAMES = [
+  "fix_casing",
+  "replace_with_space",
+  "fix_encoded_chars",
+  "extract_artist",
+  "extract_remixer",
+  "remove_garbage",
+  "remove_promo",
+  "remove_number_prefix",
+  "remove_urls",
+  "add_mix_parens",
+  "remove_common_text",
+] as const;
+
+export type SmartFixName = (typeof SMART_FIX_NAMES)[number];
+
+export async function smartFixPreview(
+  libraryPath: string,
+  fixName: SmartFixName,
+): Promise<FixProposal[]> {
+  return invoke<FixProposal[]>("smart_fix_preview", { libraryPath, fixName });
+}
+
+export async function smartFixApply(
+  libraryPath: string,
+  fixName: SmartFixName,
+  proposalIds: string[],
+): Promise<number> {
+  return invoke<number>("smart_fix_apply", {
+    libraryPath,
+    fixName,
+    proposalIds,
+  });
+}
+
+export async function commonTextBlocklistList(): Promise<string[]> {
+  return invoke<string[]>("common_text_blocklist_list");
+}
+
+export async function commonTextBlocklistAdd(pattern: string): Promise<void> {
+  return invoke<void>("common_text_blocklist_add", { pattern });
+}
+
+export async function commonTextBlocklistRemove(pattern: string): Promise<void> {
+  return invoke<void>("common_text_blocklist_remove", { pattern });
+}
+
+// ── Track Matcher ──────────────────────────────────────────────────────────
+
+export interface MatchInput {
+  title: string;
+  artist?: string;
+}
+
+export interface MatchedTrack {
+  id: string;
+  title: string;
+  artist: string | null;
+}
+
+export type MatchStatus = "Exact" | "Fuzzy" | "Unmatched";
+
+export interface MatchResult {
+  input_title: string;
+  input_artist: string | null;
+  track: MatchedTrack | null;
+  score: number;
+  status: MatchStatus;
+}
+
+export async function matchTracks(
+  libraryPath: string,
+  candidates: MatchInput[],
+): Promise<MatchResult[]> {
+  return invoke<MatchResult[]>("match_tracks", { libraryPath, candidates });
+}
+
+export async function parseCsvForMatcher(
+  content: string,
+  titleCol: string,
+  artistCol?: string,
+): Promise<MatchInput[]> {
+  return invoke<MatchInput[]>("parse_csv_for_matcher", {
+    content,
+    titleCol,
+    artistCol: artistCol ?? null,
+  });
+}
+
+export async function parseCsvHeadersForMatcher(
+  content: string,
+): Promise<string[]> {
+  return invoke<string[]>("parse_csv_headers_for_matcher", { content });
+}
+
+export async function createPlaylistFromTracks(
+  libraryPath: string,
+  name: string,
+  trackIds: string[],
+): Promise<string> {
+  return invoke<string>("create_playlist_from_tracks", {
+    libraryPath,
+    name,
+    trackIds,
+  });
+}
+
+export async function listTagCategories(): Promise<TagCategory[]> {
+  return invoke<TagCategory[]>("list_tag_categories");
+}
+
+export async function createTagCategory(name: string): Promise<TagCategory> {
+  return invoke<TagCategory>("create_tag_category", { name });
+}
+
+export async function renameTagCategory(id: string, name: string): Promise<void> {
+  return invoke<void>("rename_tag_category", { id, name });
+}
+
+export async function deleteTagCategory(id: string): Promise<void> {
+  return invoke<void>("delete_tag_category", { id });
+}
+
+export async function listTags(categoryId?: string): Promise<Tag[]> {
+  return invoke<Tag[]>("list_tags", { categoryId: categoryId ?? null });
+}
+
+export async function createTag(categoryId: string, name: string): Promise<Tag> {
+  return invoke<Tag>("create_tag", { categoryId, name });
+}
+
+export async function renameTag(id: string, name: string): Promise<void> {
+  return invoke<void>("rename_tag", { id, name });
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  return invoke<void>("delete_tag", { id });
+}
+
+export async function moveTag(id: string, newCategoryId: string): Promise<void> {
+  return invoke<void>("move_tag", { id, newCategoryId });
+}
+
+export async function getTrackTags(libraryPath: string, trackId: string): Promise<Tag[]> {
+  return invoke<Tag[]>("get_track_tags", { libraryPath, trackId });
+}
+
+export async function setTrackTags(libraryPath: string, trackId: string, tagIds: string[]): Promise<void> {
+  return invoke<void>("set_track_tags", { libraryPath, trackId, tagIds });
+}
+
+export async function addTrackTag(libraryPath: string, trackId: string, tagId: string): Promise<void> {
+  return invoke<void>("add_track_tag", { libraryPath, trackId, tagId });
+}
+
+export async function removeTrackTag(libraryPath: string, trackId: string, tagId: string): Promise<void> {
+  return invoke<void>("remove_track_tag", { libraryPath, trackId, tagId });
+}
+
+export async function searchTracksByTags(libraryPath: string, tagIds: string[], matchAll: boolean): Promise<Track[]> {
+  return invoke<Track[]>("search_tracks_by_tags", { libraryPath, tagIds, matchAll });
+}
+
+export async function listTrackTagsMap(libraryPath: string): Promise<Record<string, string[]>> {
+  return invoke<Record<string, string[]>>("list_track_tags_map", { libraryPath });
 }
 

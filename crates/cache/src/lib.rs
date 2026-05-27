@@ -6,4 +6,7 @@
 mod migrations;
 pub mod store;
 
-pub use store::CacheDb;
+pub use store::{
+    CacheDb, Conversation, ConversationMessage, ConversationWithMessages, NewStagedChange,
+    StagedChangeRecord, Tag, TagCategory,
+};

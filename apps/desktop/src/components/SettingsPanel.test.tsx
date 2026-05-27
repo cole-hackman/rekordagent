@@ -5,20 +5,33 @@ vi.mock("../ipc", () => ({
   getApiKey: vi.fn().mockResolvedValue(null),
   setApiKey: vi.fn().mockResolvedValue(undefined),
   deleteApiKey: vi.fn().mockResolvedValue(undefined),
+  getClaudeCodeStatus: vi.fn().mockResolvedValue({
+    installed: false,
+    version: null,
+    logged_in: null,
+    auth_method: null,
+    subscription_type: null,
+    email: null,
+    error: null,
+  }),
   setTheme: vi.fn().mockResolvedValue(undefined),
   pickLibraryPath: vi.fn().mockResolvedValue(null),
   validateLibraryPath: vi.fn().mockResolvedValue(42),
   setLibraryPath: vi.fn().mockResolvedValue(undefined),
+  getAgentModel: vi.fn().mockResolvedValue("claude-sonnet-4-6"),
+  setAgentModel: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
   getApiKey,
   setApiKey,
   deleteApiKey,
+  getClaudeCodeStatus,
   setTheme as setThemeIpc,
   pickLibraryPath,
   validateLibraryPath,
   setLibraryPath as setLibraryPathIpc,
+  setAgentModel,
 } from "../ipc";
 
 const mockStore = {
@@ -42,6 +55,15 @@ beforeEach(() => {
   mockStore.libraryPath = "/tmp/master.db";
   mockStore.theme = "dark";
   vi.mocked(getApiKey).mockResolvedValue(null);
+  vi.mocked(getClaudeCodeStatus).mockResolvedValue({
+    installed: false,
+    version: null,
+    logged_in: null,
+    auth_method: null,
+    subscription_type: null,
+    email: null,
+    error: null,
+  });
 });
 
 describe("SettingsPanel", () => {
@@ -135,6 +157,16 @@ describe("SettingsPanel", () => {
     );
   });
 
+  it("persists the chosen agent model", async () => {
+    render(<SettingsPanel onClose={vi.fn()} />);
+    const select = (await screen.findByLabelText("Agent model")) as HTMLSelectElement;
+    expect(select.value).toBe("claude-sonnet-4-6");
+    fireEvent.change(select, { target: { value: "claude-opus-4-7" } });
+    await waitFor(() =>
+      expect(vi.mocked(setAgentModel)).toHaveBeenCalledWith("claude-opus-4-7"),
+    );
+  });
+
   it("loads Anthropic key from keychain on mount", async () => {
     vi.mocked(getApiKey).mockResolvedValue("sk-ant-existing");
     render(<SettingsPanel onClose={vi.fn()} />);
@@ -143,6 +175,23 @@ describe("SettingsPanel", () => {
         (screen.getByPlaceholderText("sk-ant-…") as HTMLInputElement).value,
       ).toBe("sk-ant-existing"),
     );
+  });
+
+  it("shows Claude Code subscription status separately from API key support", async () => {
+    vi.mocked(getClaudeCodeStatus).mockResolvedValue({
+      installed: true,
+      version: "2.1.126 (Claude Code)",
+      logged_in: true,
+      auth_method: "claude.ai",
+      subscription_type: "pro",
+      email: "dj@example.com",
+      error: null,
+    });
+    render(<SettingsPanel onClose={vi.fn()} />);
+    expect(await screen.findByText("Agent Runtime")).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pro subscription/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chat will use your Claude Code subscription/i)).toBeInTheDocument();
   });
 
   it("saves Anthropic key when Save is clicked", async () => {

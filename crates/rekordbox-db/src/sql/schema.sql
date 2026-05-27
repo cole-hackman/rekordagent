@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS djmdContent (
     BitRate            INTEGER,
     ReleaseYear        INTEGER,
     DJPlayCount        INTEGER,
+    DateCreated        TEXT,
     rb_local_deleted   INTEGER DEFAULT 0
 );
 

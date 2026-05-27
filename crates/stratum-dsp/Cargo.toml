@@ -1,0 +1,35 @@
+[package]
+name = "stratum-dsp"
+version = "1.0.0"
+authors = ["HLLMR"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Professional-grade audio analysis engine for DJ applications: BPM detection, key detection, and beat tracking"
+
+[dependencies]
+log = "0.4"
+ort = { version = "2.0.0-rc.10", optional = true }
+rayon = "1.8"
+rustfft = "6.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+symphonia = { version = "0.5", features = ["all"] }
+
+[dev-dependencies]
+hound = "3.5"
+
+[features]
+default = []
+ml = ["ort"]
+
+[lib]
+name = "stratum_dsp"
+path = "src/lib.rs"
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests.rs"
+# Requires audio fixture files not included in the repository.
+# Run manually: cargo test -p stratum-dsp --test integration_tests
+harness = true

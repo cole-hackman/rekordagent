@@ -18,11 +18,110 @@ export interface HotCue {
 
 /** Mirrors `rekordbox_db::types::Playlist`. */
 export interface Playlist {
-  id: number;
+  id: string;
   name: string;
-  kind: "Playlist" | "Folder" | "SmartPlaylist";
+  kind: "Playlist" | "Folder" | "SmartPlaylist" | { Unknown: number };
   parent_id: string | null;
   seq: number | null;
+}
+
+export interface PlaylistDetail {
+  playlist: Playlist;
+  tracks: Track[];
+}
+
+/** Mirrors `rekordbox_db::types::DuplicateKind`. */
+export type DuplicateKind =
+  | "ExactTitleArtist"
+  | "FuzzyTitle"
+  | "AudioFingerprint";
+
+export interface DuplicateGroup {
+  title: string;
+  artist: string | null;
+  tracks: Track[];
+  /** Detection strategy; defaults to ExactTitleArtist for legacy responses. */
+  kind?: DuplicateKind;
+  /** Confidence in 0.0..=1.0. */
+  confidence?: number;
+}
+
+export interface BrokenMetadataReport {
+  missing_artist: Track[];
+  missing_bpm: Track[];
+  missing_key: Track[];
+  missing_genre: Track[];
+  suspicious: Track[];
+}
+
+export interface LibraryAnalytics {
+  total_tracks: number;
+  genre_distribution: Record<string, number>;
+  bpm_histogram: Record<number, number>;
+  key_distribution: Record<string, number>;
+}
+
+export interface GenreCount {
+  genre: string;
+  count: number;
+}
+
+export interface ArtistCount {
+  artist: string;
+  count: number;
+}
+
+export interface TagCategory {
+  id: string;
+  name: string;
+  seq: number;
+}
+
+export interface Tag {
+  id: string;
+  category_id: string;
+  name: string;
+  seq: number;
+  /** Number of track ↔ tag bindings across all libraries. Surfaced as a "(N)"
+   *  badge in the Custom Tags panel. */
+  usage_count: number;
+}
+
+/** Mirrors `audio_tags::TrackTags`. */
+export interface TrackTags {
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  genre: string | null;
+  bpm: number | null;
+  musical_key: string | null;
+  comment: string | null;
+  year: number | null;
+  rating: number | null;
+  duration_secs: number | null;
+  file_type: string | null;
+}
+
+/** Mirrors `audio_tags::TagWriteFields`. */
+export interface TagWriteFields {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  genre?: string | null;
+  bpm?: number | null;
+  musical_key?: string | null;
+  comment?: string | null;
+  year?: number | null;
+}
+
+/** Mirrors `audio_analysis::AnalysisResult`. */
+export interface AnalysisResult {
+  bpm: number;
+  musical_key: string;
+  confidence: number;
+  bpm_confidence: number;
+  key_confidence: number;
+  cached: boolean;
 }
 
 /** Mirrors `rekordbox_db::types::Track` (serde snake_case). */
@@ -44,4 +143,50 @@ export interface Track {
   bit_rate: number | null;
   release_year: number | null;
   dj_play_count: number | null;
+  /** 0.0–1.0 audio energy, hydrated from `audio_features` cache. */
+  energy: number | null;
+}
+
+export interface BeatGridEntry {
+  beat_number: number;
+  tempo_bpm_x100: number;
+  time_ms: number;
+}
+
+export type WaveformColor =
+  | { type: "Blue"; value: number }
+  | { type: "Rgb"; value: [number, number, number] };
+
+export interface PreviewPoint {
+  height: number;
+  color: WaveformColor;
+}
+
+export interface DetailPoint {
+  height: number;
+  color: WaveformColor;
+}
+
+export interface AnlzWaveform {
+  preview: PreviewPoint[];
+  detail: DetailPoint[];
+  beat_grid: BeatGridEntry[];
+  peaks: number[] | null;
+}
+
+export interface RelocateMatch {
+  path: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface RelocateCandidate {
+  track_id: string;
+  original_path: string;
+  matches: RelocateMatch[];
+}
+
+export interface TransitionScore {
+  score: number;
+  reasons: string[];
 }

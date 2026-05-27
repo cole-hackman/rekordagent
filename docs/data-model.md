@@ -6,34 +6,47 @@
 
 The user's Rekordbox 7 `master.db` (SQLCipher-encrypted SQLite) is the primary source of truth for the library. We never write to it (until Phase 6 opt-in). Our `cache` SQLite database stores derived data (audio features, embeddings, change log, conversation history).
 
-## Core types (to be defined in `crates/rekordbox-db`)
+## Core types (`crates/rekordbox-db`)
 
 ### Track
-- `id: u64` — Rekordbox internal ID
+- `id: String` — Rekordbox internal ID; Rekordbox 7 schemas can expose IDs as text
 - `title: String`
-- `artist: String`
+- `artist: Option<String>`
 - `album: Option<String>`
 - `genre: Option<String>`
-- `bpm: Option<f64>`
-- `key: Option<String>` — Camelot wheel notation
-- `duration_ms: u64`
-- `file_path: String`
-- `date_added: NaiveDate`
-- `rating: u8` — 0–5
+- `musical_key: Option<String>` — Camelot wheel notation when present
+- `bpm: Option<f64>` — converted from DB integer × 100
+- `duration_secs: Option<i64>`
+- `folder_path: Option<String>`
+- `analysis_data_path: Option<String>`
+- `rating: Option<i64>` — Rekordbox rating value
+- `comment: Option<String>`
+- `file_type: Option<i64>`
+- `sample_rate: Option<i64>`
+- `bit_rate: Option<i64>`
+- `release_year: Option<i64>`
+- `dj_play_count: Option<i64>`
 
 ### Playlist
-- `id: u64`
+- `id: String`
 - `name: String`
-- `parent_id: Option<u64>`
-- `track_ids: Vec<u64>`
+- `parent_id: Option<String>`
+- `seq: Option<i64>`
+- `kind: PlaylistKind` — `Playlist | Folder | SmartPlaylist | Unknown(i64)`
 
-### HotCue
-- `track_id: u64`
-- `index: u8` — 0-based slot
-- `position_ms: u64`
-- `color: Option<u32>` — RGB
-- `name: Option<String>`
-- `kind: HotCueKind` — `Cue | Loop | FadeIn | FadeOut | Load | Jump`
+### PlaylistEntry
+- `playlist_id: String`
+- `content_id: String`
+- `track_no: Option<i64>`
+
+### HotCue / Memory Cue
+- `id: String`
+- `content_id: String`
+- `in_msec: Option<i64>`
+- `out_msec: Option<i64>`
+- `kind: CueKind` — `MemoryCue | HotCue(u8)`
+- `color: Option<i64>` — Rekordbox color ID; `-1` means unset
+- `comment: Option<String>`
 
 ### BeatGrid
 - `track_id: u64`
@@ -44,13 +57,44 @@ The user's Rekordbox 7 `master.db` (SQLCipher-encrypted SQLite) is the primary s
 - `position_ms: u64`
 - `bpm: f64`
 
-## Cache types (to be defined in `crates/cache`)
+## Cache types (`crates/cache`)
 
-### AudioFeatures
-Derived from audio analysis; cached per (track_id, analyzer_version).
+The cache is a local SQLite WAL database whose schema is versioned via `PRAGMA user_version`. Migrations live in `crates/cache/src/migrations.rs`. Current schema version: **v4**.
 
-### Embedding
-512-d CLAP vector; cached per (track_id, model_version, chunking_config).
+### v1 — `audio_features`
+Derived from audio analysis; cached per `(track_uri, analyzer_version)`.
 
-### Change
-A staged mutation (tag edit, playlist change, etc.); pending until exported or rejected.
+```
+audio_features (
+    track_uri        TEXT NOT NULL,
+    analyzer_version TEXT NOT NULL,
+    bpm              REAL,
+    musical_key      TEXT,
+    energy           REAL,
+    features_json    TEXT,
+    created_at       INTEGER,
+    PRIMARY KEY (track_uri, analyzer_version)
+)
+```
+
+### v2 — `conversations`, `conversation_messages`
+Persisted agent conversations. `conversation_messages.content_json` stores role-tagged content blocks plus tool inputs and results. Indexed by `(library_path, updated_at DESC)` for the conversation selector.
+
+### v3 — `staged_changes`
+Staged mutations. `kind` is a `ChangeKind` discriminant (e.g. `TrackMetadataEdit`, `TrackAddCue`, `PlaylistRename`, `PlaylistCreate`, `PlaylistAddTrack`, `PlaylistRemoveTrack`, `PlaylistDelete`). `status` cycles `Proposed → Accepted/Rejected → Exported`. Indexed by `(library_path, status, updated_at DESC)`.
+
+### v4 — `audio_fingerprints`
+Compact chromagram hash per track for Hamming-distance duplicate grouping.
+
+```
+audio_fingerprints (
+    track_uri   TEXT PRIMARY KEY,
+    chroma_hash BLOB NOT NULL,
+    created_at  INTEGER
+)
+```
+
+### Planned
+
+- **Embedding** — 512-d CLAP vector; cached per `(track_id, model_version, chunking_config)`. Pending `crates/embeddings` (Phase 4).
+- **TransitionPair** — accept/reject history feeding the learned ranker (Phase 5).

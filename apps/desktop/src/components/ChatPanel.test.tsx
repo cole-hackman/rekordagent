@@ -7,10 +7,15 @@ const mockSendMessage = vi.fn();
 const mockClearMessages = vi.fn();
 let agentState = {
   messages: [] as import("../agent/types").ChatMessage[],
+  conversations: [] as import("../agent/types").ConversationSummary[],
+  activeConversationId: null as string | null,
   isStreaming: false,
   error: null as string | null,
   sendMessage: mockSendMessage,
   clearMessages: mockClearMessages,
+  newConversation: vi.fn(),
+  loadConversation: vi.fn(),
+  deleteActiveConversation: vi.fn(),
 };
 
 vi.mock("../agent/useAgent", () => ({
@@ -22,10 +27,15 @@ const defaultProps = { libraryPath: "/fake/master.db", onClose: vi.fn() };
 beforeEach(() => {
   agentState = {
     messages: [],
+    conversations: [],
+    activeConversationId: null,
     isStreaming: false,
     error: null,
     sendMessage: mockSendMessage,
     clearMessages: mockClearMessages,
+    newConversation: vi.fn(),
+    loadConversation: vi.fn(),
+    deleteActiveConversation: vi.fn(),
   };
   vi.clearAllMocks();
 });
@@ -33,7 +43,15 @@ beforeEach(() => {
 describe("ChatPanel", () => {
   it("renders placeholder when no messages", () => {
     render(<ChatPanel {...defaultProps} />);
-    expect(screen.getByText("Ask about your library…")).toBeTruthy();
+    expect(screen.getByText("Agent Assistant")).toBeTruthy();
+  });
+
+  it("starts the guided audit workflow", () => {
+    render(<ChatPanel {...defaultProps} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start Library Audit" }));
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.stringContaining("Audit missing or bad metadata"),
+    );
   });
 
   it("renders header title", () => {
@@ -49,7 +67,7 @@ describe("ChatPanel", () => {
 
   it("send button enabled when input has text", async () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "hello" } });
     const btn = screen.getByLabelText("Send message");
     expect((btn as HTMLButtonElement).disabled).toBe(false);
@@ -57,7 +75,7 @@ describe("ChatPanel", () => {
 
   it("calls sendMessage on button click and clears input", () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "find jazz tracks" } });
     fireEvent.click(screen.getByLabelText("Send message"));
     expect(mockSendMessage).toHaveBeenCalledWith("find jazz tracks");
@@ -66,7 +84,7 @@ describe("ChatPanel", () => {
 
   it("calls sendMessage on Enter key", () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "list playlists" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     expect(mockSendMessage).toHaveBeenCalledWith("list playlists");
@@ -74,7 +92,7 @@ describe("ChatPanel", () => {
 
   it("does not send on Shift+Enter", () => {
     render(<ChatPanel {...defaultProps} />);
-    const textarea = screen.getByPlaceholderText("Message…");
+    const textarea = screen.getByPlaceholderText("Ask the agent…");
     fireEvent.change(textarea, { target: { value: "hi" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
     expect(mockSendMessage).not.toHaveBeenCalled();
@@ -137,6 +155,30 @@ describe("ChatPanel", () => {
     expect(screen.queryByText('{"tracks":[]}')).toBeNull();
   });
 
+  it("renders readable tool result summaries", () => {
+    agentState.messages = [
+      {
+        role: "tool_results",
+        results: [
+          {
+            type: "tool_result",
+            tool_use_id: "tc_1",
+            content: JSON.stringify({
+              tool: "library.get_playlist",
+              detail: {
+                playlist: { name: "Techno Set" },
+                tracks: [{ title: "Dark Matter" }, { title: "Acid Rain" }],
+              },
+            }),
+          },
+        ],
+      },
+    ];
+    render(<ChatPanel {...defaultProps} />);
+    expect(screen.getByText("Techno Set")).toBeTruthy();
+    expect(screen.getByText("2 tracks")).toBeTruthy();
+  });
+
   it("shows error message", () => {
     agentState.error = "No API key set";
     render(<ChatPanel {...defaultProps} />);
@@ -154,6 +196,48 @@ describe("ChatPanel", () => {
     render(<ChatPanel {...defaultProps} />);
     fireEvent.click(screen.getByLabelText("Clear chat"));
     expect(mockClearMessages).toHaveBeenCalled();
+  });
+
+  it("renders conversation selector when conversations exist", () => {
+    agentState.conversations = [
+      {
+        id: "conv_1",
+        title: "Library audit",
+        library_path: "/fake/master.db",
+        created_at: 1,
+        updated_at: 2,
+      },
+    ];
+    agentState.activeConversationId = "conv_1";
+    render(<ChatPanel {...defaultProps} />);
+    expect(screen.getByDisplayValue("Library audit")).toBeTruthy();
+  });
+
+  it("loads selected conversation", () => {
+    const loadConversation = vi.fn();
+    agentState.conversations = [
+      {
+        id: "conv_1",
+        title: "Library audit",
+        library_path: "/fake/master.db",
+        created_at: 1,
+        updated_at: 2,
+      },
+      {
+        id: "conv_2",
+        title: "Playlist review",
+        library_path: "/fake/master.db",
+        created_at: 3,
+        updated_at: 4,
+      },
+    ];
+    agentState.activeConversationId = "conv_1";
+    agentState.loadConversation = loadConversation;
+    render(<ChatPanel {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText("Conversation"), {
+      target: { value: "conv_2" },
+    });
+    expect(loadConversation).toHaveBeenCalledWith("conv_2");
   });
 
   it("shows spinner in send button while streaming", () => {

@@ -31,3 +31,27 @@ Thumbs.db
 
 # Build artifacts
 *.log
+
+# Test artifacts
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+.playwright-mcp/
+
+# Tauri-generated mobile icon sets (regenerate via `pnpm tauri icon`)
+apps/desktop/src-tauri/icons/android/
+apps/desktop/src-tauri/icons/ios/
+apps/desktop/src-tauri/icons/Square*Logo.png
+apps/desktop/src-tauri/icons/StoreLogo.png
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Generated synthetic fixtures
+fixtures/tiny-library/master.db
+fixtures/tiny-library/music/
+
+# Real Rekordbox fixtures (do not commit!)
+fixtures/master.db
+fixtures/anlz/
+fixtures/audio-dupes/
+fixtures/pdb/

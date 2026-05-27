@@ -30,6 +30,16 @@ vi.mock("../hooks/useLibrary");
 import { useLibrary } from "../hooks/useLibrary";
 
 import { TrackTable } from "./TrackTable";
+import { EMPTY_FILTERS, type Filters, type FilterContext } from "../lib/filters";
+
+const EMPTY_CTX: FilterContext = {
+  tracksWithCues: new Set(),
+  tracksInAnyPlaylist: new Set(),
+  tracksWithMissingFiles: new Set(),
+  tagsByTrack: new Map(),
+};
+
+const withQuery = (q: string): Filters => ({ ...EMPTY_FILTERS, query: q });
 
 const TRACKS: Track[] = [
   {
@@ -50,6 +60,7 @@ const TRACKS: Track[] = [
     bit_rate: null,
     release_year: null,
     dj_play_count: null,
+    energy: null,
   },
   {
     id: "2",
@@ -69,6 +80,7 @@ const TRACKS: Track[] = [
     bit_rate: null,
     release_year: null,
     dj_play_count: null,
+    energy: null,
   },
 ];
 
@@ -87,56 +99,113 @@ beforeEach(() => {
 
 describe("TrackTable", () => {
   it("renders track titles", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.getByText("Acid Rain")).toBeInTheDocument();
   });
 
   it("renders artist names", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Surgeon")).toBeInTheDocument();
     expect(screen.getByText("Aphex Twin")).toBeInTheDocument();
   });
 
   it("renders BPM formatted to one decimal", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("140.0")).toBeInTheDocument();
     expect(screen.getByText("130.5")).toBeInTheDocument();
   });
 
   it("renders duration as M:SS", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("6:00")).toBeInTheDocument();
     expect(screen.getByText("4:00")).toBeInTheDocument();
   });
 
   it("filters tracks by title", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="dark" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={withQuery("dark")} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Dark Matter")).toBeInTheDocument();
     expect(screen.queryByText("Acid Rain")).not.toBeInTheDocument();
   });
 
   it("filters tracks by artist", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="aphex" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={withQuery("aphex")} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.queryByText("Dark Matter")).not.toBeInTheDocument();
     expect(screen.getByText("Acid Rain")).toBeInTheDocument();
   });
 
-  it("shows 'No tracks found' when filter matches nothing", () => {
+  it("shows empty state when filters match nothing", () => {
     render(
-      <TrackTable libraryPath="/tmp/master.db" filter="zzznomatch" selectedTrackId={null} onSelect={vi.fn()} />,
+      <TrackTable libraryPath="/tmp/master.db" filters={withQuery("zzznomatch")} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />,
       { wrapper },
     );
-    expect(screen.getByText("No tracks found.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No tracks match your filters"),
+    ).toBeInTheDocument();
   });
 
   it("shows column headers", () => {
-    render(<TrackTable libraryPath="/tmp/master.db" filter="" selectedTrackId={null} onSelect={vi.fn()} />, { wrapper });
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
     expect(screen.getByText("Title")).toBeInTheDocument();
     expect(screen.getByText("Artist")).toBeInTheDocument();
     expect(screen.getByText("BPM")).toBeInTheDocument();
     expect(screen.getByText("Key")).toBeInTheDocument();
     expect(screen.getByText("Time")).toBeInTheDocument();
     expect(screen.getByText("Genre")).toBeInTheDocument();
+    expect(screen.getByText("Energy")).toBeInTheDocument();
+  });
+
+  it("does not render the Tags column when no tag bindings exist", () => {
+    render(
+      <TrackTable
+        libraryPath="/tmp/master.db"
+        filters={EMPTY_FILTERS}
+        filterCtx={EMPTY_CTX}
+        selectedTrackIds={new Set()}
+        onSelectionChange={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByText("Tags")).not.toBeInTheDocument();
+  });
+
+  it("renders tag chips for tagged tracks and an em-dash for untagged ones", () => {
+    const tagsByTrack = new Map<string, Set<string>>([
+      ["1", new Set(["tag-mood-dark", "tag-vibe-late"])],
+    ]);
+    const ctx: FilterContext = { ...EMPTY_CTX, tagsByTrack };
+    const tagLabelById = {
+      "tag-mood-dark": "Mood ▸ Dark",
+      "tag-vibe-late": "Vibe ▸ Late Night",
+    };
+    render(
+      <TrackTable
+        libraryPath="/tmp/master.db"
+        filters={EMPTY_FILTERS}
+        filterCtx={ctx}
+        selectedTrackIds={new Set()}
+        onSelectionChange={vi.fn()}
+        onSelect={vi.fn()}
+        tagLabelById={tagLabelById}
+      />,
+      { wrapper },
+    );
+
+    // Header is now present.
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    // Track 1 gets two chips (leaf names only).
+    expect(screen.getByText("Dark")).toBeInTheDocument();
+    expect(screen.getByText("Late Night")).toBeInTheDocument();
+    // Track 2 (no bindings) gets an em-dash placeholder. The em-dash appears
+    // in multiple columns, so we filter to chip-bearing context via test id —
+    // simplest assertion: exactly two chips rendered overall.
+    expect(screen.getAllByTestId("track-tag-chip")).toHaveLength(2);
+  });
+
+  it("renders the Camelot key with a non-default colour applied", () => {
+    render(<TrackTable libraryPath="/tmp/master.db" filters={EMPTY_FILTERS} filterCtx={EMPTY_CTX} selectedTrackIds={new Set()} onSelectionChange={vi.fn()} onSelect={vi.fn()} />, { wrapper });
+    const keyCell = screen.getByText("8A");
+    expect(keyCell).toHaveStyle({ color: "#9F4FCA" });
   });
 });

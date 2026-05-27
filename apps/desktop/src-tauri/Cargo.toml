@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -22,7 +23,17 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rodio = { version = "0.19", features = ["symphonia-all"] }
 keyring = "2"
+chrono = "0.4"
+uuid = { version = "1.0", features = ["v4"] }
 decks-core = { path = "../../../crates/decks-core" }
+cache = { path = "../../../crates/cache" }
+changes = { path = "../../../crates/changes" }
+audio-tags = { path = "../../../crates/audio-tags" }
+audio-analysis = { path = "../../../crates/audio-analysis" }
+relocate = { version = "0.1.0", path = "../../../crates/relocate" }
+scoring = { path = "../../../crates/scoring" }
+smart-fixes = { path = "../../../crates/smart-fixes" }
+track-matcher = { path = "../../../crates/track-matcher" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

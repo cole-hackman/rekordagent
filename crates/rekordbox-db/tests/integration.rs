@@ -25,6 +25,19 @@ fn make_fixture_db() -> (tempfile::TempPath, RekordboxDb) {
     (path, db)
 }
 
+fn make_fixture_db_with_extra(extra_sql: &str) -> (tempfile::TempPath, RekordboxDb) {
+    let tmp = NamedTempFile::new().expect("tempfile");
+    let path = tmp.into_temp_path();
+    {
+        let conn = writable_cipher_conn(&path);
+        conn.execute_batch(SCHEMA).expect("schema");
+        conn.execute_batch(SEED).expect("seed");
+        conn.execute_batch(extra_sql).expect("extra sql");
+    }
+    let db = RekordboxDb::open(&path).expect("open read-only");
+    (path, db)
+}
+
 fn writable_cipher_conn(path: &Path) -> Connection {
     let conn = Connection::open(path).expect("open writable");
     conn.execute_batch(&format!(
@@ -128,6 +141,20 @@ fn playlist_entries_empty() {
     assert!(db.playlist_entries("9999").expect("entries").is_empty());
 }
 
+#[test]
+fn playlist_by_id_found() {
+    let (_p, db) = make_fixture_db();
+    let playlist = db.playlist_by_id("2").expect("query").expect("playlist");
+    assert_eq!(playlist.name, "Techno Set");
+    assert_eq!(playlist.kind, PlaylistKind::Playlist);
+}
+
+#[test]
+fn playlist_by_id_missing() {
+    let (_p, db) = make_fixture_db();
+    assert!(db.playlist_by_id("9999").expect("query").is_none());
+}
+
 // ── Cue queries ────────────────────────────────────────────────────────────
 
 #[test]
@@ -157,6 +184,95 @@ fn all_hot_cues_total_count() {
 fn cues_for_unknown_track_empty() {
     let (_p, db) = make_fixture_db();
     assert!(db.hot_cues_for_track("9999").expect("cues").is_empty());
+}
+
+// ── Health scans ───────────────────────────────────────────────────────────
+
+#[test]
+fn duplicate_tracks_groups_same_artist_title() {
+    let (_p, db) = make_fixture_db_with_extra(
+        "
+        INSERT INTO djmdContent
+            (ID, Title, ArtistID, AlbumID, GenreID, KeyID, BPM, Length, Rating, Commnt,
+             FolderPath, AnalysisDataPath, rb_local_deleted)
+        VALUES
+            ('dup-1', 'Test Track Alpha', 1, 1, 1, 1, 13200, 360, 4, 'duplicate',
+             '/music/alpha-copy.mp3', NULL, 0);
+        ",
+    );
+
+    let groups = db.duplicate_tracks().expect("duplicate scan");
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].artist.as_deref(), Some("Artist One"));
+    assert_eq!(groups[0].title, "Test Track Alpha");
+    assert_eq!(groups[0].tracks.len(), 2);
+}
+
+#[test]
+fn broken_metadata_report_finds_missing_core_fields() {
+    let (_p, db) = make_fixture_db_with_extra(
+        "
+        INSERT INTO djmdContent
+            (ID, Title, ArtistID, AlbumID, GenreID, KeyID, BPM, Length, Rating, Commnt,
+             FolderPath, AnalysisDataPath, rb_local_deleted)
+        VALUES
+            ('broken-1', 'Broken Metadata', NULL, NULL, NULL, NULL, NULL, 180, 0, NULL,
+             '/music/broken.mp3', NULL, 0);
+        ",
+    );
+
+    let report = db.broken_metadata_report().expect("broken metadata scan");
+    assert!(report.missing_artist.iter().any(|t| t.id == "broken-1"));
+    assert!(report.missing_bpm.iter().any(|t| t.id == "broken-1"));
+    assert!(report.missing_key.iter().any(|t| t.id == "broken-1"));
+    assert!(report.missing_genre.iter().any(|t| t.id == "broken-1"));
+}
+
+// ── Analytics ──────────────────────────────────────────────────────────────
+
+#[test]
+fn library_analytics_excludes_deleted_and_distributes_by_genre_key_bpm() {
+    let (_p, db) = make_fixture_db();
+    let a = db.library_analytics().expect("analytics");
+
+    // Seed has 4 djmdContent rows, 1 of which has rb_local_deleted = 1.
+    assert_eq!(a.total_tracks, 3);
+
+    // Genres: tracks 1 & 3 are Techno, track 2 is House. Deleted track excluded.
+    assert_eq!(a.genre_distribution.get("Techno").copied(), Some(2));
+    assert_eq!(a.genre_distribution.get("House").copied(), Some(1));
+
+    // Keys: tracks 1 & 3 use 8A, track 2 uses 11B.
+    assert_eq!(a.key_distribution.get("8A").copied(), Some(2));
+    assert_eq!(a.key_distribution.get("11B").copied(), Some(1));
+
+    // BPM bucketed by floor of BPM/100 (seed stores BPM*100).
+    assert_eq!(a.bpm_histogram.get(&132).copied(), Some(1));
+    assert_eq!(a.bpm_histogram.get(&128).copied(), Some(1));
+    assert_eq!(a.bpm_histogram.get(&140).copied(), Some(1));
+    // Deleted track's BPM (128) should not double-count.
+    assert_eq!(a.bpm_histogram.values().sum::<usize>(), 3);
+}
+
+#[test]
+fn library_analytics_skips_null_and_empty_genre_key() {
+    // Insert a track with NULL genre/key/BPM so we can assert those don't break the
+    // aggregation or get counted as empty-string buckets.
+    let extra = "INSERT INTO djmdContent
+            (ID, Title, ArtistID, AlbumID, GenreID, KeyID, BPM, Length, Rating, Commnt,
+             FolderPath, AnalysisDataPath, rb_local_deleted)
+        VALUES
+            (99, 'No Metadata', 1, 1, NULL, NULL, NULL, 200, 0, NULL,
+             '/music/none.mp3', NULL, 0);";
+    let (_p, db) = make_fixture_db_with_extra(extra);
+    let a = db.library_analytics().expect("analytics");
+
+    assert_eq!(a.total_tracks, 4);
+    // No empty-string keys should appear in the distributions.
+    assert!(!a.genre_distribution.contains_key(""));
+    assert!(!a.key_distribution.contains_key(""));
+    // BPM histogram must not gain a 0 bucket from the NULL row.
+    assert!(!a.bpm_histogram.contains_key(&0));
 }
 
 // ── ANLZ beat grid ─────────────────────────────────────────────────────────

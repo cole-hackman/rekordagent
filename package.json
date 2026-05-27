@@ -8,11 +8,13 @@
     "dev": "pnpm --filter desktop dev",
     "build": "pnpm --filter desktop build",
     "test": "pnpm --filter desktop test",
+    "e2e": "pnpm --filter desktop e2e",
     "typecheck": "pnpm --filter desktop typecheck",
     "lint": "pnpm --filter desktop lint"
   },
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"
-  }
+  },
+  "packageManager": "pnpm@10.33.4"
 }

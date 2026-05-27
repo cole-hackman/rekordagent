@@ -1,7 +1,10 @@
 use crate::migrations;
 use anyhow::{Context, Result};
+use changes::{ChangeKind, ChangeStatus};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Handle to the local SQLite WAL cache database.
 pub struct CacheDb {
@@ -104,8 +107,381 @@ impl CacheDb {
         }
     }
 
+    /// Bulk lookup of the latest cached `energy` for each given `track_uri`.
+    ///
+    /// Returns a map of `track_uri -> energy` for any URI that has at least one
+    /// non-null `energy` row in `audio_features`. If multiple analyzer versions
+    /// exist for the same URI, the most recent (highest `created_at`) wins.
+    ///
+    /// URIs without any cached energy are simply absent from the result map.
+    pub fn get_energy_by_uris(
+        &self,
+        track_uris: &[&str],
+    ) -> Result<std::collections::HashMap<String, f64>> {
+        let mut out = std::collections::HashMap::new();
+        if track_uris.is_empty() {
+            return Ok(out);
+        }
+        for chunk in track_uris.chunks(500) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT track_uri, energy, created_at FROM audio_features
+                 WHERE track_uri IN ({placeholders}) AND energy IS NOT NULL
+                 ORDER BY created_at DESC"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let params_iter: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+            let rows = stmt.query_map(&*params_iter, |row| {
+                let uri: String = row.get(0)?;
+                let energy: f64 = row.get(1)?;
+                Ok((uri, energy))
+            })?;
+            for r in rows {
+                let (uri, energy) = r?;
+                // Descending order means the first row seen for each URI is the
+                // newest; `or_insert` keeps it and ignores older duplicates.
+                // This stays correct even if a `LIMIT` is added later.
+                out.entry(uri).or_insert(energy);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn save_audio_fingerprint(&self, track_uri: &str, chroma_hash: &[u8]) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO audio_fingerprints (track_uri, chroma_hash)
+             VALUES (?1, ?2)
+             ON CONFLICT(track_uri) DO UPDATE SET chroma_hash = excluded.chroma_hash, created_at = unixepoch()",
+            rusqlite::params![track_uri, chroma_hash],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_all_fingerprints(&self) -> Result<Vec<(String, Vec<u8>)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT track_uri, chroma_hash FROM audio_fingerprints")?;
+        let rows = stmt.query_map([], |row| {
+            let track_uri: String = row.get(0)?;
+            let chroma_hash: Vec<u8> = row.get(1)?;
+            Ok((track_uri, chroma_hash))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    // ── Waveform peaks ──────────────────────────────────────────────────────
+
+    /// Persist decoded waveform peaks (one `f32` per visual bar) for a track.
+    /// Peaks are stored as a little-endian `f32` blob.
+    pub fn set_waveform_peaks(&self, track_uri: &str, peaks: &[f32]) -> Result<()> {
+        let mut bytes: Vec<u8> = Vec::with_capacity(peaks.len() * 4);
+        for p in peaks {
+            bytes.extend_from_slice(&p.to_le_bytes());
+        }
+        let sample_count = peaks.len() as i64;
+        self.conn.execute(
+            "INSERT INTO waveform_peaks (track_uri, peaks, sample_count)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(track_uri) DO UPDATE SET
+                 peaks = excluded.peaks,
+                 sample_count = excluded.sample_count,
+                 generated_at = CURRENT_TIMESTAMP",
+            rusqlite::params![track_uri, bytes, sample_count],
+        )?;
+        Ok(())
+    }
+
+    /// Load cached waveform peaks for a track, if present.
+    pub fn get_waveform_peaks(&self, track_uri: &str) -> Result<Option<Vec<f32>>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT peaks FROM waveform_peaks WHERE track_uri = ?1")?;
+        let mut rows = stmt.query(rusqlite::params![track_uri])?;
+        if let Some(row) = rows.next()? {
+            let bytes: Vec<u8> = row.get(0)?;
+            let peaks = bytes
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect();
+            Ok(Some(peaks))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn schema_version(&self) -> Result<u32> {
         migrations::current_version(&self.conn)
+    }
+
+    // ── Conversations ───────────────────────────────────────────────────────
+
+    pub fn create_conversation(
+        &self,
+        library_path: Option<&str>,
+        title: &str,
+    ) -> Result<Conversation> {
+        let id = new_id("conv");
+        self.conn.execute(
+            "INSERT INTO conversations (id, library_path, title)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![id, library_path, title],
+        )?;
+        self.load_conversation_metadata(&id)?
+            .context("created conversation was not found")
+    }
+
+    pub fn list_conversations(&self, library_path: Option<&str>) -> Result<Vec<Conversation>> {
+        if let Some(path) = library_path {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, library_path, title, created_at, updated_at
+                 FROM conversations
+                 WHERE library_path = ?1
+                 ORDER BY updated_at DESC, created_at DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![path], row_to_conversation)?;
+            return rows
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, library_path, title, created_at, updated_at
+             FROM conversations
+             ORDER BY updated_at DESC, created_at DESC",
+        )?;
+        let rows = stmt.query_map([], row_to_conversation)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn load_conversation(&self, id: &str) -> Result<Option<ConversationWithMessages>> {
+        let Some(conversation) = self.load_conversation_metadata(id)? else {
+            return Ok(None);
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id, conversation_id, role, content_json, created_at
+             FROM conversation_messages
+             WHERE conversation_id = ?1
+             ORDER BY created_at, rowid",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![id], row_to_message)?;
+        // Skip individual messages with malformed JSON rather than failing the
+        // whole conversation load — better to surface partial history than
+        // none. Genuine SQLite errors (locked DB, missing column) still bubble.
+        let mut messages = Vec::new();
+        let mut skipped = 0usize;
+        for row in rows {
+            match row {
+                Ok(msg) => messages.push(msg),
+                Err(rusqlite::Error::FromSqlConversionFailure(_, _, _)) => {
+                    skipped += 1;
+                }
+                Err(e) => return Err(anyhow::Error::from(e)),
+            }
+        }
+        if skipped > 0 {
+            tracing::warn!(
+                conversation_id = id,
+                skipped,
+                "load_conversation: dropped messages with unparseable content_json",
+            );
+        }
+        Ok(Some(ConversationWithMessages {
+            conversation,
+            messages,
+        }))
+    }
+
+    pub fn append_conversation_message(
+        &self,
+        conversation_id: &str,
+        role: &str,
+        content: serde_json::Value,
+    ) -> Result<ConversationMessage> {
+        let id = new_id("msg");
+        let content_json = serde_json::to_string(&content)?;
+        self.conn.execute(
+            "INSERT INTO conversation_messages (id, conversation_id, role, content_json)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, conversation_id, role, content_json],
+        )?;
+        self.conn.execute(
+            "UPDATE conversations SET updated_at = unixepoch() WHERE id = ?1",
+            rusqlite::params![conversation_id],
+        )?;
+        self.load_message(&id)?
+            .context("created conversation message was not found")
+    }
+
+    pub fn rename_conversation(&self, id: &str, title: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE conversations
+             SET title = ?2, updated_at = unixepoch()
+             WHERE id = ?1",
+            rusqlite::params![id, title],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_conversation(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM conversations WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    fn load_conversation_metadata(&self, id: &str) -> Result<Option<Conversation>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, library_path, title, created_at, updated_at
+             FROM conversations
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![id], row_to_conversation)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    fn load_message(&self, id: &str) -> Result<Option<ConversationMessage>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, conversation_id, role, content_json, created_at
+             FROM conversation_messages
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![id], row_to_message)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    // ── Staged changes ─────────────────────────────────────────────────────
+
+    pub fn stage_change(&self, input: NewStagedChange) -> Result<StagedChangeRecord> {
+        let id = new_id("change");
+        let kind = kind_to_db(&input.kind)?;
+        let old_value = optional_json_to_db(&input.old_value)?;
+        let new_value = optional_json_to_db(&input.new_value)?;
+        self.conn.execute(
+            "INSERT INTO staged_changes
+                (id, library_path, kind, target_id, field, old_value, new_value, reason, confidence, status)
+             VALUES
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'Proposed')",
+            rusqlite::params![
+                id,
+                input.library_path,
+                kind,
+                input.target_id,
+                input.field,
+                old_value,
+                new_value,
+                input.reason,
+                input.confidence
+            ],
+        )?;
+        self.load_change(&id)?
+            .context("created staged change was not found")
+    }
+
+    pub fn list_changes(&self, library_path: Option<&str>) -> Result<Vec<StagedChangeRecord>> {
+        if let Some(path) = library_path {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, library_path, kind, target_id, field, old_value, new_value,
+                        reason, confidence, status, created_at, updated_at
+                 FROM staged_changes
+                 WHERE library_path = ?1
+                 ORDER BY updated_at DESC, created_at DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![path], row_to_change)?;
+            return rows
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(Into::into);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, library_path, kind, target_id, field, old_value, new_value,
+                    reason, confidence, status, created_at, updated_at
+             FROM staged_changes
+             ORDER BY updated_at DESC, created_at DESC",
+        )?;
+        let rows = stmt.query_map([], row_to_change)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn accept_change(&self, id: &str) -> Result<StagedChangeRecord> {
+        self.transition_change(id, ChangeStatus::Accepted)
+    }
+
+    pub fn reject_change(&self, id: &str) -> Result<StagedChangeRecord> {
+        self.transition_change(id, ChangeStatus::Rejected)
+    }
+
+    pub fn mark_change_exported(&self, id: &str) -> Result<StagedChangeRecord> {
+        self.transition_change(id, ChangeStatus::Exported)
+    }
+
+    pub fn accept_all_safe(&self, library_path: Option<&str>) -> Result<Vec<StagedChangeRecord>> {
+        let proposed = self
+            .list_changes(library_path)?
+            .into_iter()
+            .filter(|change| change.status == ChangeStatus::Proposed)
+            .filter(|change| changes::is_safe_batch_kind(&change.kind))
+            .collect::<Vec<_>>();
+        let mut accepted = Vec::with_capacity(proposed.len());
+        for change in proposed {
+            accepted.push(self.accept_change(&change.id)?);
+        }
+        Ok(accepted)
+    }
+
+    pub fn reject_all(&self, library_path: Option<&str>) -> Result<Vec<StagedChangeRecord>> {
+        let proposed = self
+            .list_changes(library_path)?
+            .into_iter()
+            .filter(|change| change.status == ChangeStatus::Proposed)
+            .collect::<Vec<_>>();
+        let mut rejected = Vec::with_capacity(proposed.len());
+        for change in proposed {
+            rejected.push(self.reject_change(&change.id)?);
+        }
+        Ok(rejected)
+    }
+
+    fn load_change(&self, id: &str) -> Result<Option<StagedChangeRecord>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT id, library_path, kind, target_id, field, old_value, new_value,
+                    reason, confidence, status, created_at, updated_at
+             FROM staged_changes
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![id], row_to_change)?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    fn transition_change(&self, id: &str, to: ChangeStatus) -> Result<StagedChangeRecord> {
+        let change = self
+            .load_change(id)?
+            .with_context(|| format!("change {id} was not found"))?;
+        changes::ensure_transition(&change.status, &to)?;
+        self.conn.execute(
+            "UPDATE staged_changes
+             SET status = ?2, updated_at = unixepoch()
+             WHERE id = ?1",
+            rusqlite::params![id, status_to_db(&to)?],
+        )?;
+        self.load_change(id)?
+            .context("updated staged change was not found")
     }
 }
 
@@ -118,6 +494,33 @@ pub struct AudioFeatures {
     pub features_json: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    pub library_path: Option<String>,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub id: String,
+    pub conversation_id: String,
+    pub role: String,
+    pub content: serde_json::Value,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationWithMessages {
+    pub conversation: Conversation,
+    pub messages: Vec<ConversationMessage>,
+}
+
+pub type NewStagedChange = changes::NewChange;
+pub type StagedChangeRecord = changes::StagedChange;
+
 fn configure(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
@@ -127,6 +530,487 @@ fn configure(conn: &Connection) -> Result<()> {
     )
     .context("configuring SQLite pragmas")?;
     Ok(())
+}
+
+fn row_to_conversation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Conversation> {
+    Ok(Conversation {
+        id: row.get(0)?,
+        library_path: row.get(1)?,
+        title: row.get(2)?,
+        created_at: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationMessage> {
+    let content_json: String = row.get(3)?;
+    let content = serde_json::from_str(&content_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(e))
+    })?;
+    Ok(ConversationMessage {
+        id: row.get(0)?,
+        conversation_id: row.get(1)?,
+        role: row.get(2)?,
+        content,
+        created_at: row.get(4)?,
+    })
+}
+
+fn row_to_change(row: &rusqlite::Row<'_>) -> rusqlite::Result<StagedChangeRecord> {
+    let kind: String = row.get(2)?;
+    let old_value: Option<String> = row.get(5)?;
+    let new_value: Option<String> = row.get(6)?;
+    let status: String = row.get(9)?;
+    Ok(StagedChangeRecord {
+        id: row.get(0)?,
+        library_path: row.get(1)?,
+        kind: parse_string_enum(2, &kind)?,
+        target_id: row.get(3)?,
+        field: row.get(4)?,
+        old_value: parse_optional_json(5, old_value)?,
+        new_value: parse_optional_json(6, new_value)?,
+        reason: row.get(7)?,
+        confidence: row.get(8)?,
+        status: parse_string_enum(9, &status)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn kind_to_db(kind: &ChangeKind) -> Result<String> {
+    enum_to_db(kind)
+}
+
+fn status_to_db(status: &ChangeStatus) -> Result<String> {
+    enum_to_db(status)
+}
+
+fn enum_to_db<T: Serialize>(value: &T) -> Result<String> {
+    serde_json::to_value(value)?
+        .as_str()
+        .map(ToOwned::to_owned)
+        .context("enum did not serialize as string")
+}
+
+fn optional_json_to_db(value: &Option<serde_json::Value>) -> Result<Option<String>> {
+    value
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(Into::into)
+}
+
+fn parse_optional_json(
+    column: usize,
+    value: Option<String>,
+) -> rusqlite::Result<Option<serde_json::Value>> {
+    value
+        .map(|value| {
+            serde_json::from_str(&value).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    column,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })
+        })
+        .transpose()
+}
+
+fn parse_string_enum<T: for<'de> Deserialize<'de>>(
+    column: usize,
+    value: &str,
+) -> rusqlite::Result<T> {
+    serde_json::from_value(serde_json::Value::String(value.to_owned())).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(column, rusqlite::types::Type::Text, Box::new(e))
+    })
+}
+
+fn new_id(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    format!("{prefix}_{nanos}")
+}
+
+// ── Custom Tags ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TagCategory {
+    pub id: String,
+    pub name: String,
+    pub seq: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Tag {
+    pub id: String,
+    pub category_id: String,
+    pub name: String,
+    pub seq: i64,
+    /// Number of `track_tags` rows pointing at this tag, summed across every
+    /// library. Used by the UI to render a "(7)" usage badge without an extra
+    /// round-trip per tag. `u32` is safe — `COUNT(*)` for tag membership can
+    /// never exceed total library track count, which fits comfortably.
+    #[serde(default)]
+    pub usage_count: u32,
+}
+
+impl CacheDb {
+    pub fn list_tag_categories(&self) -> Result<Vec<TagCategory>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, seq FROM tag_categories ORDER BY seq, name")?;
+        let rows = stmt.query_map([], |r| {
+            Ok(TagCategory {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                seq: r.get(2)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn create_tag_category(&self, name: &str) -> Result<TagCategory> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let seq: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), -1) + 1 FROM tag_categories",
+            [],
+            |r| r.get(0),
+        )?;
+        self.conn.execute(
+            "INSERT INTO tag_categories (id, name, seq) VALUES (?1, ?2, ?3)",
+            rusqlite::params![id, name, seq],
+        )?;
+        Ok(TagCategory {
+            id,
+            name: name.to_owned(),
+            seq,
+        })
+    }
+
+    pub fn rename_tag_category(&self, id: &str, name: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE tag_categories SET name = ?1 WHERE id = ?2",
+            rusqlite::params![name, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_tag_category(&self, id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM tag_categories WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_tags(&self, category_id: Option<&str>) -> Result<Vec<Tag>> {
+        let mut tags = Vec::new();
+        let with_count = "SELECT t.id, t.category_id, t.name, t.seq, \
+             (SELECT COUNT(*) FROM track_tags tt WHERE tt.tag_id = t.id) AS usage_count \
+             FROM tags t";
+        if let Some(cat_id) = category_id {
+            let sql = format!("{with_count} WHERE t.category_id = ?1 ORDER BY t.seq, t.name");
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut rows = stmt.query(rusqlite::params![cat_id])?;
+            while let Some(r) = rows.next()? {
+                tags.push(Tag {
+                    id: r.get(0)?,
+                    category_id: r.get(1)?,
+                    name: r.get(2)?,
+                    seq: r.get(3)?,
+                    usage_count: r.get::<_, u32>(4)?,
+                });
+            }
+        } else {
+            let sql = format!("{with_count} ORDER BY t.category_id, t.seq, t.name");
+            let mut stmt = self.conn.prepare(&sql)?;
+            let mut rows = stmt.query([])?;
+            while let Some(r) = rows.next()? {
+                tags.push(Tag {
+                    id: r.get(0)?,
+                    category_id: r.get(1)?,
+                    name: r.get(2)?,
+                    seq: r.get(3)?,
+                    usage_count: r.get::<_, u32>(4)?,
+                });
+            }
+        }
+        Ok(tags)
+    }
+
+    pub fn create_tag(&self, category_id: &str, name: &str) -> Result<Tag> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let seq: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), -1) + 1 FROM tags WHERE category_id = ?1",
+            rusqlite::params![category_id],
+            |r| r.get(0),
+        )?;
+        self.conn.execute(
+            "INSERT INTO tags (id, category_id, name, seq) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, category_id, name, seq],
+        )?;
+        Ok(Tag {
+            id,
+            category_id: category_id.to_owned(),
+            name: name.to_owned(),
+            seq,
+            usage_count: 0,
+        })
+    }
+
+    pub fn rename_tag(&self, id: &str, name: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE tags SET name = ?1 WHERE id = ?2",
+            rusqlite::params![name, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_tag(&self, id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM tags WHERE id = ?1", rusqlite::params![id])?;
+        Ok(())
+    }
+
+    pub fn move_tag(&self, id: &str, new_category_id: &str) -> Result<()> {
+        let seq: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), -1) + 1 FROM tags WHERE category_id = ?1",
+            rusqlite::params![new_category_id],
+            |r| r.get(0),
+        )?;
+        self.conn.execute(
+            "UPDATE tags SET category_id = ?1, seq = ?2 WHERE id = ?3",
+            rusqlite::params![new_category_id, seq, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_track_tags(&self, library_path: &str, track_id: &str) -> Result<Vec<Tag>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.category_id, t.name, t.seq,
+                    (SELECT COUNT(*) FROM track_tags tt2 WHERE tt2.tag_id = t.id) AS usage_count
+             FROM tags t
+             JOIN track_tags tt ON t.id = tt.tag_id
+             WHERE tt.library_path = ?1 AND tt.track_id = ?2
+             ORDER BY t.category_id, t.seq, t.name",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![library_path, track_id], |r| {
+            Ok(Tag {
+                id: r.get(0)?,
+                category_id: r.get(1)?,
+                name: r.get(2)?,
+                seq: r.get(3)?,
+                usage_count: r.get::<_, u32>(4)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn set_track_tags(
+        &self,
+        library_path: &str,
+        track_id: &str,
+        tag_ids: &[String],
+    ) -> Result<()> {
+        self.conn.execute("BEGIN IMMEDIATE", [])?;
+        let res: Result<(), rusqlite::Error> = (|| {
+            self.conn.execute(
+                "DELETE FROM track_tags WHERE library_path = ?1 AND track_id = ?2",
+                rusqlite::params![library_path, track_id],
+            )?;
+
+            let mut stmt = self.conn.prepare(
+                "INSERT INTO track_tags (library_path, track_id, tag_id) VALUES (?1, ?2, ?3)",
+            )?;
+            for tag_id in tag_ids {
+                stmt.execute(rusqlite::params![library_path, track_id, tag_id])?;
+            }
+            Ok(())
+        })();
+
+        if res.is_ok() {
+            self.conn.execute("COMMIT", [])?;
+        } else {
+            self.conn.execute("ROLLBACK", [])?;
+            res?;
+        }
+        Ok(())
+    }
+
+    pub fn add_track_tag(&self, library_path: &str, track_id: &str, tag_id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO track_tags (library_path, track_id, tag_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params![library_path, track_id, tag_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_track_tag(&self, library_path: &str, track_id: &str, tag_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM track_tags WHERE library_path = ?1 AND track_id = ?2 AND tag_id = ?3",
+            rusqlite::params![library_path, track_id, tag_id],
+        )?;
+        Ok(())
+    }
+
+    /// Map every track in the given library to the list of tag IDs assigned to
+    /// it. Used by the frontend to populate the in-memory tag filter index so
+    /// `applyFilters` can evaluate tag predicates without per-track IPC.
+    pub fn list_track_tags_map(
+        &self,
+        library_path: &str,
+    ) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT track_id, tag_id FROM track_tags WHERE library_path = ?1")?;
+        let rows = stmt.query_map(rusqlite::params![library_path], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut out: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (track_id, tag_id) = row?;
+            out.entry(track_id).or_default().push(tag_id);
+        }
+        Ok(out)
+    }
+
+    pub fn search_tracks_by_tags(
+        &self,
+        library_path: &str,
+        tag_ids: &[String],
+        match_all: bool,
+    ) -> Result<Vec<String>> {
+        if tag_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let in_clause = tag_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+
+        let sql = if match_all {
+            format!(
+                "SELECT track_id FROM track_tags 
+                 WHERE library_path = ? AND tag_id IN ({}) 
+                 GROUP BY track_id 
+                 HAVING COUNT(DISTINCT tag_id) = ?",
+                in_clause
+            )
+        } else {
+            format!(
+                "SELECT DISTINCT track_id FROM track_tags 
+                 WHERE library_path = ? AND tag_id IN ({})",
+                in_clause
+            )
+        };
+
+        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&library_path];
+        for id in tag_ids {
+            params.push(id);
+        }
+        let count = tag_ids.len() as i64;
+        if match_all {
+            params.push(&count);
+        }
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params), |r| {
+            r.get::<_, String>(0)
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    // ── Incoming / Archive ──────────────────────────────────────────────────
+
+    /// Returns the per-library "incoming cleared at" watermark as unix epoch
+    /// seconds. None means the user has never cleared the inbox.
+    pub fn get_incoming_watermark(&self, library_path: &str) -> Result<Option<i64>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT cleared_at FROM incoming_watermark WHERE library_path = ?1")?;
+        let mut rows = stmt.query_map(rusqlite::params![library_path], |r| r.get::<_, i64>(0))?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Set the watermark to the given unix epoch seconds. Upserts.
+    pub fn set_incoming_watermark(&self, library_path: &str, cleared_at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO incoming_watermark (library_path, cleared_at)
+             VALUES (?1, ?2)
+             ON CONFLICT(library_path) DO UPDATE SET cleared_at = excluded.cleared_at",
+            rusqlite::params![library_path, cleared_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_archived(&self, library_path: &str) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT track_id FROM archived_tracks WHERE library_path = ?1")?;
+        let rows = stmt.query_map(rusqlite::params![library_path], |r| r.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn archive_tracks(&self, library_path: &str, track_ids: &[String]) -> Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        for id in track_ids {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO archived_tracks (library_path, track_id, archived_at)
+                 VALUES (?1, ?2, ?3)",
+                rusqlite::params![library_path, id, now],
+            )?;
+        }
+        Ok(())
+    }
+
+    // ── Smart Fixes config ──────────────────────────────────────────────────
+
+    pub fn list_common_text_patterns(&self) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT pattern FROM common_text_blocklist ORDER BY id ASC")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn add_common_text_pattern(&self, pattern: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO common_text_blocklist (pattern) VALUES (?1)",
+            rusqlite::params![pattern],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_common_text_pattern(&self, pattern: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM common_text_blocklist WHERE pattern = ?1",
+            rusqlite::params![pattern],
+        )?;
+        Ok(())
+    }
+
+    pub fn unarchive_tracks(&self, library_path: &str, track_ids: &[String]) -> Result<()> {
+        for id in track_ids {
+            self.conn.execute(
+                "DELETE FROM archived_tracks WHERE library_path = ?1 AND track_id = ?2",
+                rusqlite::params![library_path, id],
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -146,6 +1030,35 @@ mod tests {
         drop(tmp);
         let db = CacheDb::open(&path).unwrap();
         assert!(db.schema_version().unwrap() >= 1);
+    }
+
+    #[test]
+    fn waveform_peaks_round_trips() {
+        let cache = CacheDb::open_in_memory().unwrap();
+        let peaks: Vec<f32> = vec![0.1, 0.2, -0.3, 0.5];
+        cache.set_waveform_peaks("file:///t1.mp3", &peaks).unwrap();
+        let loaded = cache.get_waveform_peaks("file:///t1.mp3").unwrap();
+        assert_eq!(loaded.unwrap(), peaks);
+    }
+
+    #[test]
+    fn waveform_peaks_returns_none_for_unknown() {
+        let cache = CacheDb::open_in_memory().unwrap();
+        assert!(cache
+            .get_waveform_peaks("file:///nope.mp3")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn waveform_peaks_overwrite_replaces_data() {
+        let cache = CacheDb::open_in_memory().unwrap();
+        cache
+            .set_waveform_peaks("file:///t.mp3", &[0.1, 0.2, 0.3])
+            .unwrap();
+        cache.set_waveform_peaks("file:///t.mp3", &[0.9]).unwrap();
+        let loaded = cache.get_waveform_peaks("file:///t.mp3").unwrap().unwrap();
+        assert_eq!(loaded, vec![0.9_f32]);
     }
 
     #[test]
@@ -212,6 +1125,33 @@ mod tests {
     }
 
     #[test]
+    fn get_energy_by_uris_returns_newest_when_multiple_rows_exist() {
+        let db = CacheDb::open_in_memory().unwrap();
+        // Two analyzer versions for the same URI; insert the older one second
+        // to ensure ordering is driven by `created_at`, not insertion order.
+        db.conn
+            .execute(
+                "INSERT INTO audio_features (track_uri, analyzer_version, energy, created_at)
+                 VALUES (?1, 'v2', 0.91, 2000)",
+                rusqlite::params!["file:///newest.mp3"],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO audio_features (track_uri, analyzer_version, energy, created_at)
+                 VALUES (?1, 'v1', 0.10, 1000)",
+                rusqlite::params!["file:///newest.mp3"],
+            )
+            .unwrap();
+        let map = db.get_energy_by_uris(&["file:///newest.mp3"]).unwrap();
+        let energy = map.get("file:///newest.mp3").copied().expect("present");
+        assert!(
+            (energy - 0.91).abs() < 1e-9,
+            "expected newest energy, got {energy}"
+        );
+    }
+
+    #[test]
     fn wal_mode_is_set() {
         let db = CacheDb::open_in_memory().unwrap();
         let mode: String = db
@@ -221,5 +1161,217 @@ mod tests {
         // In-memory always reports "memory" regardless; file DBs report "wal".
         // Just verify the pragma executes without error.
         assert!(!mode.is_empty());
+    }
+
+    #[test]
+    fn conversation_crud_roundtrip() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let conversation = db
+            .create_conversation(Some("/library/master.db"), "Library audit")
+            .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "user",
+            serde_json::json!({"text": "audit my playlists"}),
+        )
+        .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "assistant",
+            serde_json::json!({"blocks": [{"type": "text", "text": "Done"}]}),
+        )
+        .unwrap();
+
+        let loaded = db.load_conversation(&conversation.id).unwrap().unwrap();
+        assert_eq!(loaded.conversation.title, "Library audit");
+        assert_eq!(loaded.messages.len(), 2);
+        assert_eq!(loaded.messages[0].role, "user");
+
+        let list = db.list_conversations(Some("/library/master.db")).unwrap();
+        assert_eq!(list.len(), 1);
+
+        db.delete_conversation(&conversation.id).unwrap();
+        assert!(db.load_conversation(&conversation.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn load_conversation_skips_malformed_messages() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let conversation = db
+            .create_conversation(Some("/library/master.db"), "Corrupted")
+            .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "user",
+            serde_json::json!({"text": "first"}),
+        )
+        .unwrap();
+        db.append_conversation_message(
+            &conversation.id,
+            "assistant",
+            serde_json::json!({"blocks": []}),
+        )
+        .unwrap();
+
+        // Simulate corruption: overwrite one row's content_json with non-JSON.
+        db.conn
+            .execute(
+                "UPDATE conversation_messages SET content_json = 'not json {' \
+                 WHERE conversation_id = ?1 AND role = 'user'",
+                rusqlite::params![&conversation.id],
+            )
+            .unwrap();
+
+        // Should still load the surviving message rather than failing the call.
+        let loaded = db.load_conversation(&conversation.id).unwrap().unwrap();
+        assert_eq!(
+            loaded.messages.len(),
+            1,
+            "the assistant message must survive even though the user message is corrupted",
+        );
+        assert_eq!(loaded.messages[0].role, "assistant");
+    }
+
+    #[test]
+    fn staged_change_crud_roundtrip() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let change = db
+            .stage_change(NewStagedChange {
+                library_path: Some("/library/master.db".to_owned()),
+                kind: ChangeKind::TrackMetadataEdit,
+                target_id: Some("track-1".to_owned()),
+                field: Some("genre".to_owned()),
+                old_value: Some(serde_json::json!("House")),
+                new_value: Some(serde_json::json!("Deep House")),
+                reason: Some("Normalize genre".to_owned()),
+                confidence: Some(0.88),
+            })
+            .unwrap();
+        assert_eq!(change.status, ChangeStatus::Proposed);
+
+        let list = db.list_changes(Some("/library/master.db")).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].kind, ChangeKind::TrackMetadataEdit);
+
+        let accepted = db.accept_change(&change.id).unwrap();
+        assert_eq!(accepted.status, ChangeStatus::Accepted);
+        let exported = db.mark_change_exported(&change.id).unwrap();
+        assert_eq!(exported.status, ChangeStatus::Exported);
+    }
+
+    #[test]
+    fn staged_change_rejects_invalid_transitions() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let change = db
+            .stage_change(NewStagedChange {
+                library_path: None,
+                kind: ChangeKind::TrackMetadataEdit,
+                target_id: Some("track-1".to_owned()),
+                field: Some("genre".to_owned()),
+                old_value: None,
+                new_value: Some(serde_json::json!("Techno")),
+                reason: None,
+                confidence: None,
+            })
+            .unwrap();
+        db.accept_change(&change.id).unwrap();
+        assert!(db.reject_change(&change.id).is_err());
+    }
+
+    #[test]
+    fn staged_change_batch_operations_scope_by_library() {
+        let db = CacheDb::open_in_memory().unwrap();
+        db.stage_change(NewStagedChange {
+            library_path: Some("/a.db".to_owned()),
+            kind: ChangeKind::TrackMetadataEdit,
+            target_id: Some("track-1".to_owned()),
+            field: Some("genre".to_owned()),
+            old_value: None,
+            new_value: Some(serde_json::json!("House")),
+            reason: None,
+            confidence: None,
+        })
+        .unwrap();
+        db.stage_change(NewStagedChange {
+            library_path: Some("/b.db".to_owned()),
+            kind: ChangeKind::TrackMetadataEdit,
+            target_id: Some("track-2".to_owned()),
+            field: Some("genre".to_owned()),
+            old_value: None,
+            new_value: Some(serde_json::json!("Techno")),
+            reason: None,
+            confidence: None,
+        })
+        .unwrap();
+
+        let accepted = db.accept_all_safe(Some("/a.db")).unwrap();
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(
+            db.list_changes(Some("/b.db")).unwrap()[0].status,
+            ChangeStatus::Proposed
+        );
+    }
+
+    #[test]
+    fn list_tags_reports_usage_count() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let cat = db.create_tag_category("Mood").unwrap();
+        let chill = db.create_tag(&cat.id, "Chill").unwrap();
+        let hype = db.create_tag(&cat.id, "Hype").unwrap();
+
+        // Fresh tags have a zero usage count.
+        let tags = db.list_tags(Some(&cat.id)).unwrap();
+        assert_eq!(
+            tags.iter().find(|t| t.id == chill.id).unwrap().usage_count,
+            0
+        );
+        assert_eq!(
+            tags.iter().find(|t| t.id == hype.id).unwrap().usage_count,
+            0
+        );
+
+        // Assign `chill` to two tracks, `hype` to one.
+        db.add_track_tag("/lib.db", "track-1", &chill.id).unwrap();
+        db.add_track_tag("/lib.db", "track-2", &chill.id).unwrap();
+        db.add_track_tag("/lib.db", "track-1", &hype.id).unwrap();
+
+        let tags = db.list_tags(Some(&cat.id)).unwrap();
+        let chill_row = tags.iter().find(|t| t.id == chill.id).unwrap();
+        let hype_row = tags.iter().find(|t| t.id == hype.id).unwrap();
+        assert_eq!(chill_row.usage_count, 2);
+        assert_eq!(hype_row.usage_count, 1);
+
+        // Removing a binding decrements the count.
+        db.remove_track_tag("/lib.db", "track-2", &chill.id)
+            .unwrap();
+        let tags = db.list_tags(None).unwrap();
+        assert_eq!(
+            tags.iter().find(|t| t.id == chill.id).unwrap().usage_count,
+            1
+        );
+    }
+
+    #[test]
+    fn list_track_tags_map_groups_by_track() {
+        let db = CacheDb::open_in_memory().unwrap();
+        let cat = db.create_tag_category("Mood").unwrap();
+        let a = db.create_tag(&cat.id, "A").unwrap();
+        let b = db.create_tag(&cat.id, "B").unwrap();
+        db.add_track_tag("/lib.db", "t1", &a.id).unwrap();
+        db.add_track_tag("/lib.db", "t1", &b.id).unwrap();
+        db.add_track_tag("/lib.db", "t2", &b.id).unwrap();
+        // Different library — must be excluded.
+        db.add_track_tag("/other.db", "t1", &a.id).unwrap();
+
+        let map = db.list_track_tags_map("/lib.db").unwrap();
+        let mut t1 = map.get("t1").cloned().unwrap_or_default();
+        t1.sort();
+        let mut expected = vec![a.id.clone(), b.id.clone()];
+        expected.sort();
+        let t2 = map.get("t2").cloned().unwrap_or_default();
+        assert_eq!(t1, expected);
+        assert_eq!(t2, vec![b.id.clone()]);
+        // /other.db rows must be excluded — t1 in /lib.db should only have two tags.
+        assert_eq!(map.get("t1").map(|v| v.len()), Some(2));
     }
 }

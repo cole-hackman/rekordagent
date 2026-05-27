@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+    "crates/stratum-dsp",
     "crates/rekordbox-db",
     "crates/rekordbox-xml",
     "crates/audio-analysis",
@@ -16,8 +17,11 @@ members = [
     "crates/ranker",
     "crates/plugins",
     "crates/decks-core",
+    "crates/agent-tools",
     "apps/cli",
-    "apps/desktop/src-tauri",
+    "apps/desktop/src-tauri", "crates/relocate",
+    "crates/smart-fixes",
+    "crates/track-matcher",
 ]
 
 [workspace.package]
@@ -39,3 +43,5 @@ serde_json = "1"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# CSV parsing
+csv = "1.3"

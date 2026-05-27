@@ -30,6 +30,7 @@ const TRACK: Track = {
   bit_rate: null,
   release_year: null,
   dj_play_count: null,
+  energy: null,
 };
 
 beforeEach(() => {
@@ -116,24 +117,8 @@ describe("useAudioPlayer", () => {
     expect(result.current.isPlaying).toBe(false);
   });
 
-  it("space key calls toggleCurrent", async () => {
-    renderHook(() => useAudioPlayer(TRACK));
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", bubbles: true }));
-    });
-    expect(vi.mocked(playTrack)).toHaveBeenCalledWith(TRACK.folder_path);
-  });
-
-  it("space key is ignored when target is an input", async () => {
-    renderHook(() => useAudioPlayer(TRACK));
-    const input = document.createElement("input");
-    document.body.appendChild(input);
-    await act(async () => {
-      const event = new KeyboardEvent("keydown", { code: "Space", bubbles: true });
-      Object.defineProperty(event, "target", { value: input });
-      window.dispatchEvent(event);
-    });
-    document.body.removeChild(input);
-    expect(vi.mocked(playTrack)).not.toHaveBeenCalled();
-  });
+  // Global space-key binding lives in App.tsx via the shared
+  // useKeyboardShortcuts hook (which also excludes buttons/links). The
+  // hook itself no longer registers a keydown listener — tested via
+  // useKeyboardShortcuts.test.ts instead.
 });

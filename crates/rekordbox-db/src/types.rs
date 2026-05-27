@@ -25,6 +25,10 @@ pub struct Track {
     pub bit_rate: Option<i64>,
     pub release_year: Option<i64>,
     pub dj_play_count: Option<i64>,
+    /// Audio energy 0.0–1.0, hydrated from the local cache's `audio_features`
+    /// table at the Tauri layer. `None` when no analysis has been cached.
+    #[serde(default)]
+    pub energy: Option<f32>,
 }
 
 /// A playlist or folder from `djmdPlaylist`.
@@ -62,6 +66,49 @@ pub struct PlaylistEntry {
     pub playlist_id: String,
     pub content_id: String,
     pub track_no: Option<i64>,
+}
+
+/// Why a `DuplicateGroup` was flagged. Tags every group so the UI can render a
+/// per-row header explaining the match strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DuplicateKind {
+    /// Identical lowercased+trimmed title AND artist.
+    ExactTitleArtist,
+    /// Fuzzy title signature (strips remix annotations, "feat." markers, etc.)
+    /// plus primary-artist normalisation.
+    FuzzyTitle,
+    /// Chromagram fingerprint within a Hamming-distance threshold.
+    AudioFingerprint,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub title: String,
+    pub artist: Option<String>,
+    pub tracks: Vec<Track>,
+    /// Detection strategy. Defaults to `ExactTitleArtist` for back-compat.
+    #[serde(default = "default_dup_kind")]
+    pub kind: DuplicateKind,
+    /// Confidence in 0.0..=1.0. Exact matches are 1.0; fuzzy/fingerprint vary.
+    #[serde(default = "default_dup_confidence")]
+    pub confidence: f32,
+}
+
+fn default_dup_kind() -> DuplicateKind {
+    DuplicateKind::ExactTitleArtist
+}
+
+fn default_dup_confidence() -> f32 {
+    1.0
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct BrokenMetadataReport {
+    pub missing_artist: Vec<Track>,
+    pub missing_bpm: Vec<Track>,
+    pub missing_key: Vec<Track>,
+    pub missing_genre: Vec<Track>,
+    pub suspicious: Vec<Track>,
 }
 
 /// A hot cue or memory cue from `djmdCue`.
@@ -110,4 +157,27 @@ impl BeatGridEntry {
     pub fn bpm(&self) -> f64 {
         self.tempo_bpm_x100 as f64 / 100.0
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct LibraryAnalytics {
+    pub total_tracks: usize,
+    /// Genre name -> Count
+    pub genre_distribution: std::collections::HashMap<String, usize>,
+    /// Floor(BPM) -> Count
+    pub bpm_histogram: std::collections::HashMap<u16, usize>,
+    /// Musical Key -> Count
+    pub key_distribution: std::collections::HashMap<String, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GenreCount {
+    pub genre: String,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtistCount {
+    pub artist: String,
+    pub count: u32,
 }
